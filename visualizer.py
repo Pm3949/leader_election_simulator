@@ -1,6 +1,23 @@
+import os
 import json
 import streamlit as st
 import streamlit.components.v1 as components
+
+_LOCAL_VIS_JS = None
+
+def _get_vis_js_script():
+    global _LOCAL_VIS_JS
+    if _LOCAL_VIS_JS is None:
+        local_file = os.path.join(os.path.dirname(__file__), 'static', 'vis-network.min.js')
+        if os.path.isfile(local_file):
+            try:
+                with open(local_file, 'r', encoding='utf-8') as f:
+                    _LOCAL_VIS_JS = f"<script>\n{f.read()}\n</script>"
+            except Exception:
+                _LOCAL_VIS_JS = '<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js"></script>'
+        else:
+            _LOCAL_VIS_JS = '<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js"></script>'
+    return _LOCAL_VIS_JS
 
 def get_message_display_info(kind, payload):
     """Format payload into human-friendly label and color."""
@@ -428,14 +445,8 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
           color: #64748b;
           font-style: italic;
         }}
-      <script src="https://unpkg.com/vis-network@10.1.4/standalone/umd/vis-network.min.js"></script>
-      <script>
-        if (typeof vis === 'undefined') {{
-          const s = document.createElement('script');
-          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js';
-          document.head.appendChild(s);
-        }}
-      </script>
+      </style>
+      <!-- __LOCAL_VIS_JS_INJECTION__ -->
     </head>
     <body>
       <div id="container">
@@ -504,19 +515,14 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
         const messagesData = {messages_json};
         const isFinished = {finished_flag};
 
-        if (typeof vis === 'undefined') {{
-          const container = document.getElementById('network-canvas');
-          if (container) {{
-            container.innerHTML = `
-              <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;text-align:center;padding:24px;">
-                <div style="font-weight:700;color:#f8fafc;font-size:16px;margin-bottom:8px;">Interactive Network Visualizer</div>
-                <div style="font-size:13px;max-width:440px;line-height:1.6;color:#cbd5e1;">The interactive Vis.js canvas library is loading or offline. You can toggle to <b>Classic Plotly</b> above for offline graph rendering.</div>
-              </div>
-            `;
+        function startNetwork() {{
+          if (typeof vis === 'undefined') {{
+            setTimeout(startNetwork, 30);
+            return;
           }}
-        }} else {{
-        // Create Vis.js DataSets
-        const visNodes = new vis.DataSet(nodesData.map(n => ({{
+
+          // Create Vis.js DataSets
+          const visNodes = new vis.DataSet(nodesData.map(n => ({{
           id: n.id,
           label: n.label,
           x: n.x,
@@ -842,9 +848,16 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
           network.fit();
         }}, 80);
         }}
+
+        if (document.readyState === 'loading') {{
+          document.addEventListener('DOMContentLoaded', startNetwork);
+        }} else {{
+          startNetwork();
+        }}
       </script>
     </body>
     </html>
     """
 
+    html_code = html_code.replace("<!-- __LOCAL_VIS_JS_INJECTION__ -->", _get_vis_js_script())
     components.html(html_code, height=height, scrolling=False)

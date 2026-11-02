@@ -242,7 +242,7 @@ with left:
             label_visibility='collapsed'
         )
 
-    if viz_mode == 'Interactive Vis.js':
+    if 'Interactive' in str(viz_mode):
         render_visjs_network(sim, st.session_state.graph, st.session_state.ids, st.session_state.pos, height=520)
     else:
         st.markdown(
