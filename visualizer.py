@@ -24,7 +24,7 @@ def get_message_display_info(kind, payload):
         color = "#8b5cf6"
     elif kind == "RETURN":
         orig = payload.get('origin', '')
-        label = f"Return ➔ {orig}"
+        label = f"Return -> {orig}"
         color = "#06b6d4"
     elif kind == "ID_BROADCAST":
         label = f"ID: {payload.get('node_id', '')}"
@@ -78,7 +78,7 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
         },
         'elected': {
             'bg': '#059669', 'border': '#34d399', 'highlight_bg': '#10b981', 'highlight_border': '#a7f3d0',
-            'badge': '👑 Elected Leader', 'badge_bg': 'rgba(5, 150, 105, 0.3)', 'badge_color': '#6ee7b7'
+            'badge': 'Elected Leader', 'badge_bg': 'rgba(5, 150, 105, 0.3)', 'badge_color': '#6ee7b7'
         }
     }
 
@@ -129,7 +129,7 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
         nodes_data.append({
             'id': v,
             'logical_id': ids[v],
-            'label': f"👑 Node {v}\nID: {ids[v]}" if is_leader else f"Node {v}\nID: {ids[v]}",
+            'label': f"Node {v} [Leader]\nID: {ids[v]}" if is_leader else f"Node {v}\nID: {ids[v]}",
             'status': status,
             'is_leader': is_leader,
             'badge': pal['badge'],
@@ -428,28 +428,34 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
           color: #64748b;
           font-style: italic;
         }}
-      </style>
       <script src="https://unpkg.com/vis-network@10.1.4/standalone/umd/vis-network.min.js"></script>
+      <script>
+        if (typeof vis === 'undefined') {{
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js';
+          document.head.appendChild(s);
+        }}
+      </script>
     </head>
     <body>
       <div id="container">
         <!-- Floating Toolbar -->
         <div class="top-toolbar">
-          <button class="tool-btn highlight" id="btn-deliver" title="Animate delivery once from senders to receivers">▶ Play Delivery (1x)</button>
-          <button class="tool-btn" id="btn-fit" title="Fit network to view">🎯 Fit</button>
-          <button class="tool-btn" id="btn-clear-focus" title="Clear node isolation">👁️ Show All</button>
+          <button class="tool-btn highlight" id="btn-deliver" title="Animate delivery once from senders to receivers">Play Delivery (1x)</button>
+          <button class="tool-btn" id="btn-fit" title="Fit network to view">Fit View</button>
+          <button class="tool-btn" id="btn-clear-focus" title="Clear node isolation">Reset Focus</button>
         </div>
 
         <!-- Node Isolation Banner -->
         <div id="isolation-banner" title="Click to clear focus">
-          <span>🔍 Focusing on Node <span id="isolated-node-id">-</span></span>
+          <span>Focus: Node <span id="isolated-node-id">-</span></span>
           <span style="opacity:0.7;margin-left:4px;">(click to reset)</span>
         </div>
 
         <!-- Status Pill -->
         <div class="status-badge">
           <div class="dot {'active' if in_flight_raw else ''}"></div>
-          <span><strong>Round {round_num}</strong> · {'🏁 Complete' if sim.finished else f'📬 {len(in_flight_raw)} message(s)'}</span>
+          <span><strong>Round {round_num}</strong> · {'Complete' if sim.finished else f'{len(in_flight_raw)} message(s) queued'}</span>
         </div>
 
         <!-- Network Canvas -->
@@ -471,11 +477,11 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
           </div>
           <div class="legend-item" id="leg-leader">
             <div class="legend-dot" style="background:#059669; border: 1px solid #34d399;"></div>
-            <span>Leader 👑</span>
+            <span>Leader</span>
           </div>
           <div class="legend-item">
-            <span style="color:#ef4444;font-size:12px;">✉</span>
-            <span>Message Badge</span>
+            <span style="display:inline-block;width:9px;height:9px;background:#ef4444;border-radius:2px;"></span>
+            <span>Message Token</span>
           </div>
         </div>
 
@@ -498,6 +504,17 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
         const messagesData = {messages_json};
         const isFinished = {finished_flag};
 
+        if (typeof vis === 'undefined') {{
+          const container = document.getElementById('network-canvas');
+          if (container) {{
+            container.innerHTML = `
+              <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;text-align:center;padding:24px;">
+                <div style="font-weight:700;color:#f8fafc;font-size:16px;margin-bottom:8px;">Interactive Network Visualizer</div>
+                <div style="font-size:13px;max-width:440px;line-height:1.6;color:#cbd5e1;">The interactive Vis.js canvas library is loading or offline. You can toggle to <b>Classic Plotly</b> above for offline graph rendering.</div>
+              </div>
+            `;
+          }}
+        }} else {{
         // Create Vis.js DataSets
         const visNodes = new vis.DataSet(nodesData.map(n => ({{
           id: n.id,
@@ -614,14 +631,26 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
               if (pos) {{
                 ctx.save();
                 ctx.beginPath();
-                ctx.arc(pos.x, pos.y, 36, 0, 2 * Math.PI);
+                ctx.arc(pos.x, pos.y, 34, 0, 2 * Math.PI);
                 ctx.strokeStyle = '#10b981';
-                ctx.lineWidth = 2.5;
+                ctx.lineWidth = 3;
                 ctx.stroke();
 
-                ctx.font = '22px sans-serif';
+                ctx.font = 'bold 9px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText('👑', pos.x, pos.y - 38);
+                ctx.textBaseline = 'middle';
+                const lText = 'LEADER';
+                const lWidth = ctx.measureText(lText).width + 10;
+                ctx.fillStyle = '#059669';
+                ctx.beginPath();
+                if (ctx.roundRect) {{
+                  ctx.roundRect(pos.x - lWidth/2, pos.y - 36, lWidth, 14, 3);
+                }} else {{
+                  ctx.rect(pos.x - lWidth/2, pos.y - 36, lWidth, 14);
+                }}
+                ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(lText, pos.x, pos.y - 29);
                 ctx.restore();
               }}
             }}
@@ -659,7 +688,7 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
                 ctx.fill();
 
                 // Clean Message Pill
-                const label = `✉ ${{msg.label || msg.kind}}`;
+                const label = `${{msg.label || msg.kind}}`;
                 ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, monospace';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
@@ -675,7 +704,11 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
                 ctx.strokeStyle = msg.color || '#ef4444';
                 ctx.lineWidth = 1.8;
                 ctx.beginPath();
-                ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+                if (ctx.roundRect) {{
+                  ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+                }} else {{
+                  ctx.rect(badgeX, badgeY, badgeW, badgeH);
+                }}
                 ctx.fill();
                 ctx.stroke();
 
@@ -714,7 +747,7 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
           const node = nodesData.find(n => n.id === nodeId);
           if (!node) return;
 
-          inspTitle.innerHTML = (node.is_leader ? '👑 ' : '⬡ ') + `Node ${{node.id}} <span style="font-size:12px;color:#94a3b8;font-weight:normal;">(ID: ${{node.logical_id}})</span>`;
+          inspTitle.innerHTML = (node.is_leader ? '<span style="color:#10b981;font-weight:700;">[LEADER]</span> ' : '') + `Node ${{node.id}} <span style="font-size:12px;color:#94a3b8;font-weight:normal;">(ID: ${{node.logical_id}})</span>`;
           inspBadge.textContent = node.badge;
           inspBadge.style.background = node.badge_bg;
           inspBadge.style.color = node.badge_color;
@@ -739,7 +772,7 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
           if (node.out_msgs.length > 0) {{
             node.out_msgs.forEach(m => {{
               html += `<div class="msg-chip" style="border-left-color:${{m.color}};">
-                <strong>➔ Node ${{m.dst}}</strong>: ${{m.label}}<br>
+                <strong>To Node ${{m.dst}}</strong>: ${{m.label}}<br>
                 <span style="color:#94a3b8;font-size:10px;">Payload: ${{JSON.stringify(m.payload)}}</span>
               </div>`;
             }});
@@ -751,7 +784,7 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
           if (node.in_msgs.length > 0) {{
             node.in_msgs.forEach(m => {{
               html += `<div class="msg-chip" style="border-left-color:${{m.color}};">
-                <strong>📥 From Node ${{m.src}}</strong>: ${{m.label}}<br>
+                <strong>From Node ${{m.src}}</strong>: ${{m.label}}<br>
                 <span style="color:#94a3b8;font-size:10px;">Payload: ${{JSON.stringify(m.payload)}}</span>
               </div>`;
             }});
@@ -808,6 +841,7 @@ def render_visjs_network(sim, graph, ids, pos, height=520):
         setTimeout(() => {{
           network.fit();
         }}, 80);
+        }}
       </script>
     </body>
     </html>

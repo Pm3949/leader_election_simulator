@@ -1,11 +1,12 @@
 import time, streamlit as st, networkx as nx, plotly.graph_objects as go, pandas as pd, random
 from algorithms import ALGORITHMS
+from algorithms.steps import ALGORITHM_STEPS
 from core.engine import Simulator
 from visualizer import render_visjs_network
 from storyline import generate_round_storyline
-st.set_page_config(page_title='Leader Election Lab',page_icon='🗳️',layout='wide')
-st.title('🗳️ Distributed Leader Election Lab')
-st.caption('Chapter 5 · Synchronous rounds · Network visualization + event trace')
+st.set_page_config(page_title='Leader Election Simulator',layout='wide')
+st.title('Distributed Leader Election Simulator')
+st.caption('Synchronous network models · Round-by-round state progression and message exchange')
 with st.sidebar:
     st.header('Configuration'); alg_name=st.selectbox('Algorithm',list(ALGORITHMS)); alg=ALGORITHMS[alg_name]
     n=st.slider('Nodes',3,30,8); seed=st.number_input('Random seed',0,999999,7)
@@ -34,13 +35,13 @@ def compute_layout(graph, alg_topology, topo_name):
         return {node: (float(i - len(nodes) / 2.0), 0.0) for i, node in enumerate(nodes)}
     if topo_name == 'Grid-like':
         try:
-            return nx.spring_layout(graph, seed=int(seed), iterations=100)
+            return nx.spring_layout(graph, seed=int(seed), iterations=80)
         except Exception:
             return nx.circular_layout(graph)
     try:
-        return nx.kamada_kawai_layout(graph)
+        return nx.spring_layout(graph, seed=int(seed), iterations=80)
     except Exception:
-        return nx.spring_layout(graph, seed=int(seed))
+        return nx.circular_layout(graph)
 
 def build_network_figure(sim, graph, ids, pos):
     edge_x, edge_y = [], []
@@ -70,7 +71,7 @@ def build_network_figure(sim, graph, ids, pos):
     node_border_widths = [4 if sim.nodes[v].status == 'elected' else 2.5 for v in sim.nodes]
     node_sizes = [44 if sim.nodes[v].status == 'elected' else 36 for v in sim.nodes]
 
-    node_labels = [f"👑 {ids[v]}" if sim.nodes[v].status == 'elected' else str(ids[v]) for v in sim.nodes]
+    node_labels = [f"{ids[v]} [L]" if sim.nodes[v].status == 'elected' else str(ids[v]) for v in sim.nodes]
     node_hover = [
         f"<b>Node {v}</b><br>ID: {ids[v]}<br>Status: <b>{sim.nodes[v].status.upper()}</b><br>State: {sim.nodes[v].state}"
         for v in sim.nodes
@@ -96,7 +97,7 @@ def build_network_figure(sim, graph, ids, pos):
         x=node_x,
         y=[y - 0.12 for y in node_y],
         mode='text',
-        text=[f"👑 Leader (Node {v})" if sim.nodes[v].status == 'elected' else f"Node {v}" for v in sim.nodes],
+        text=[f"Leader (Node {v})" if sim.nodes[v].status == 'elected' else f"Node {v}" for v in sim.nodes],
         textposition='bottom center',
         textfont=dict(size=11, color='#64748b', family='sans-serif'),
         hoverinfo='none',
@@ -113,8 +114,10 @@ def build_network_figure(sim, graph, ids, pos):
     show_labels = len(in_flight) <= 24
 
     for src, dst, kind, p in in_flight:
-        p_src = pos[src]
-        p_dst = pos[dst]
+        p_src = pos.get(src)
+        p_dst = pos.get(dst)
+        if p_src is None or p_dst is None:
+            continue
         dx = float(p_dst[0] - p_src[0])
         dy = float(p_dst[1] - p_src[1])
         mx = float(p_src[0] + 0.55 * dx)
@@ -123,12 +126,12 @@ def build_network_figure(sim, graph, ids, pos):
         val = p.get('token', p.get('value', p.get('node_id', p.get('rank', ''))))
         if isinstance(val, (tuple, list)):
             val = round(val[0], 2)
-        lbl = f"✉ {val}" if val != '' else "✉"
+        lbl = f"{val}" if val != '' else "msg"
 
         msg_x.append(mx)
         msg_y.append(my)
         msg_labels.append(lbl if show_labels else "")
-        msg_hover.append(f"<b>In Flight: Node {src} ➔ Node {dst}</b><br>Type: {kind}<br>Payload: {p}")
+        msg_hover.append(f"<b>In Flight: Node {src} -> Node {dst}</b><br>Type: {kind}<br>Payload: {p}")
 
         annotations.append(dict(
             x=float(p_dst[0] - 0.18 * dx),
@@ -176,15 +179,17 @@ def build_network_figure(sim, graph, ids, pos):
     )
     return fig, in_flight
 
-if reset or 'sim' not in st.session_state or st.session_state.get('alg')!=alg_name:
+config_signature = (alg_name, n, int(seed), id_mode, topo)
+if reset or 'sim' not in st.session_state or st.session_state.get('config_sig') != config_signature:
     graph=create_graph(); vals=list(range(1,n+1))
     if id_mode=='Shuffled': random.Random(int(seed)).shuffle(vals)
     ids=dict(zip(graph.nodes,vals)); st.session_state.graph=graph; st.session_state.ids=ids
     st.session_state.sim=Simulator(graph,alg,ids,int(seed)); st.session_state.alg=alg_name
+    st.session_state.config_sig = config_signature
     st.session_state.running=False
     st.session_state.pos = compute_layout(graph, alg.topology, topo if alg.topology=='general' else alg.topology)
 
-if 'pos' not in st.session_state:
+if 'pos' not in st.session_state or set(st.session_state.pos.keys()) != set(st.session_state.graph.nodes):
     st.session_state.pos = compute_layout(st.session_state.graph, alg.topology, topo if alg.topology=='general' else alg.topology)
 
 sim=st.session_state.sim
@@ -196,18 +201,48 @@ left,right=st.columns([1.4,1])
 fig, in_flight = build_network_figure(sim, st.session_state.graph, st.session_state.ids, st.session_state.pos)
 
 with left:
+    # Dropdown paragraph detailing algorithm steps above the visualization
+    steps_data = ALGORITHM_STEPS.get(alg_name)
+    if steps_data:
+        with st.expander(f"Protocol Steps & Theoretical Rules: {alg_name}", expanded=False):
+            st.markdown(
+                f"""<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px 16px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                        <span style="font-size:14px; font-weight:700; color:#38bdf8;">{steps_data['title']}</span>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <span style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; border:1px solid rgba(56,189,248,0.3);">{steps_data['topology']}</span>
+                            <span style="background:rgba(16,185,129,0.15); color:#10b981; font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; border:1px solid rgba(16,185,129,0.3);">{steps_data['complexity']}</span>
+                        </div>
+                    </div>
+                    <div style="font-size:12.5px; color:#cbd5e1; line-height:1.55;"><b>Objective:</b> {steps_data['summary']}</div>
+                </div>""",
+                unsafe_allow_html=True
+            )
+            for step in steps_data['steps']:
+                tag_label = step.get('tag', f"STEP {step['step_number']}")
+                st.markdown(
+                    f"""<div style="background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.06); border-left:3px solid #38bdf8; border-radius:6px; padding:10px 14px; margin-bottom:8px;">
+                        <div style="font-size:13px; font-weight:700; color:#f8fafc; margin-bottom:5px; display:flex; align-items:center; gap:8px;">
+                            <span style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; font-family:monospace;">{tag_label}</span>
+                            <span>Step {step['step_number']}: {step['title']}</span>
+                        </div>
+                        <div style="font-size:12px; color:#94a3b8; line-height:1.55;">{step['content']}</div>
+                    </div>""",
+                    unsafe_allow_html=True
+                )
+
     head_col1, head_col2 = st.columns([1.1, 1])
     with head_col1:
         st.subheader('Network Visualization')
     with head_col2:
         viz_mode = st.radio(
             'Visual Mode',
-            ['🚀 Interactive (Drag, Packets, Inspect)', '📊 Classic Plotly'],
+            ['Interactive Vis.js', 'Classic Plotly'],
             horizontal=True,
             label_visibility='collapsed'
         )
 
-    if viz_mode.startswith('🚀'):
+    if viz_mode == 'Interactive Vis.js':
         render_visjs_network(sim, st.session_state.graph, st.session_state.ids, st.session_state.pos, height=520)
     else:
         st.markdown(
@@ -215,7 +250,7 @@ with left:
             '<span><span style="color:#3b82f6;font-size:16px;">●</span> Active</span>'
             '<span><span style="color:#f59e0b;font-size:16px;">●</span> Candidate</span>'
             '<span><span style="color:#64748b;font-size:16px;">●</span> Non-elected</span>'
-            '<span><span style="color:#10b981;font-size:16px;">●</span> Elected Leader 👑</span>'
+            '<span><span style="color:#10b981;font-size:16px;">●</span> Elected Leader</span>'
             '<span><span style="color:#ef4444;font-size:16px;">◆</span> In-flight Message</span>'
             '</div>',
             unsafe_allow_html=True
@@ -223,12 +258,12 @@ with left:
         st.plotly_chart(fig, use_container_width=True)
 
     storyline_items = generate_round_storyline(sim, st.session_state.ids)
-    with st.expander(f"📖 Round {sim.round} Storyline & Decisions ({len(storyline_items)} events)", expanded=True):
+    with st.expander(f"Round {sim.round} Execution Trace & Invariant Log ({len(storyline_items)} entries)", expanded=True):
         for item in storyline_items:
             st.markdown(
                 f"""<div style="background:rgba(255,255,255,0.04); border-left: 4px solid {item['badge_color']}; padding: 9px 12px; border-radius: 6px; margin-bottom: 7px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 3px;">
-                        <span style="font-weight:700; font-size:13px; color:#f8fafc;">{item['icon']} {item['title']}</span>
+                        <span style="font-weight:700; font-size:13px; color:#f8fafc;">{item['title']}</span>
                         <span style="background:{item['badge_color']}25; color:{item['badge_color']}; font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; border:1px solid {item['badge_color']}50;">{item['badge']}</span>
                     </div>
                     <div style="font-size:12px; color:#cbd5e1; line-height:1.4;">{item['detail']}</div>
@@ -236,16 +271,16 @@ with left:
                 unsafe_allow_html=True
             )
 
-    with st.expander(f"📡 Messages In Transit (Round {sim.round})", expanded=False):
+    with st.expander(f"Messages In Transit (Round {sim.round})", expanded=False):
         if in_flight:
-            st.markdown(f"**📬 {len(in_flight)} Message(s) Queued for Next Round:**")
+            st.markdown(f"**{len(in_flight)} Message(s) Queued for Round {sim.round + 1}:**")
             msg_cols = st.columns(min(3, len(in_flight)))
             for idx, (src, dst, kind, p) in enumerate(in_flight):
                 with msg_cols[idx % len(msg_cols)]:
                     val = p.get('token', p.get('value', p.get('node_id', p.get('rank', ''))))
-                    st.caption(f"**Node {src} ➔ Node {dst}**\n`{kind}` ({val})")
+                    st.caption(f"**Node {src} -> Node {dst}**\n`{kind}` ({val})")
         elif sim.finished:
-            st.success(f"🎉 Election Complete! Leader elected: **Node {sim.result_data.get('leaders')}**")
+            st.success(f"Election Complete — Leader elected: **Node {sim.result_data.get('leaders')}**")
         else:
             st.info("No active messages in transit.")
 with right:
@@ -254,22 +289,22 @@ with right:
     a,b=st.columns(2)
     is_running = st.session_state.get('running', False)
     if is_running:
-        if a.button('⏸ Pause', use_container_width=True):
+        if a.button('Pause', use_container_width=True):
             st.session_state.running = False
             st.rerun()
     else:
-        if a.button('▶ Run', disabled=sim.finished, use_container_width=True):
+        if a.button('Run', disabled=sim.finished, use_container_width=True):
             st.session_state.running = True
             st.rerun()
-    if b.button('Step round', disabled=sim.finished or is_running, use_container_width=True):
+    if b.button('Step Round', disabled=sim.finished or is_running, use_container_width=True):
         sim.step()
         st.rerun()
     c1,c2=st.columns(2)
-    if c1.button('⚡ Fast-forward', disabled=sim.finished, use_container_width=True):
+    if c1.button('Fast-Forward', disabled=sim.finished, use_container_width=True):
         st.session_state.running = False
         sim.run()
         st.rerun()
-    if c2.button('Reset simulation', use_container_width=True):
+    if c2.button('Reset', use_container_width=True):
         st.session_state.running = False
         st.session_state.pop('sim', None)
         st.rerun()
