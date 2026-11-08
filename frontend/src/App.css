@@ -1,0 +1,11 @@
+/* App custom animations */
+@keyframes dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+.edge-flow {
+  stroke-dasharray: 6 4;
+  animation: dash 1s linear infinite;
+}

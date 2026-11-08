@@ -44,31 +44,97 @@ class RandomRing(BasicRing):
                 if v!=self.leader: node.status='non-elected'
 
 class ImprovedRing:
-    name="ImprovedLE-Ring"; topology="ring"; complexity="O(n) rounds; O(n log n) messages."
-    description="Bidirectional phased elimination. In phase i, active nodes probe up to 2^i hops in both directions and survive only if both probes return."
-    def initialize(self,s,seed):
-        self.ids=s.ids; self.n=len(self.ids); self.active=set(self.ids); self.phase=0; self.phase_start=s.round; self.wait={}; self.leader=None
-        self.begin(s)
-    def begin(self,s):
-        self.phase_start=s.round; self.dist=min(2**self.phase,self.n); self.wait={v:set() for v in self.active}
+    name = "ImprovedLE-Ring"
+    topology = "ring"
+    complexity = "O(n) rounds; O(n log n) messages."
+    description = "Bidirectional phased elimination (Hirschberg-Sinclair). In phase k, candidates probe 2^k hops in both directions and survive only if both probes return."
+
+    def initialize(self, s, seed):
+        self.ids = s.ids
+        self.n = len(self.ids)
+        self.active = set(self.ids.keys())
+        self.phase = 0
+        self.leader = None
+        self.done = False
+        self.begin_phase(s)
+
+    def begin_phase(self, s):
+        self.phase_start = s.round
+        self.dist = min(2**self.phase, self.n)
+        self.replies = {v: set() for v in self.active}
         for v in self.active:
-            for d in (-1,1): s.send(v,(v+d)%self.n,'PROBE',origin=v,token=self.ids[v],direction=d,remaining=self.dist-1)
-    def step(self,s):
-        for v,node in s.nodes.items():
-            inbox,node.inbox=node.inbox,[]
-            for src,kind,p in inbox:
-                if kind=='PROBE':
-                    if self.ids[v]<p['token']: s.log('PROBE BLOCKED',v,src,f"ID {self.ids[v]} blocks {p['token']}",'drop')
-                    elif p['remaining']==0: s.send(v,p['origin'],'RETURN',origin=p['origin'],direction=p['direction'])
-                    else: s.send(v,(v+p['direction'])%self.n,'PROBE',**{**p,'remaining':p['remaining']-1})
-                elif kind=='RETURN' and p['origin'] in self.wait: self.wait[p['origin']].add(p['direction'])
-        if s.round-self.phase_start>=2*self.dist:
-            survivors={v for v,dirs in self.wait.items() if dirs=={-1,1}}
-            for v in self.active-survivors: s.nodes[v].status='non-elected'; s.log('NODE ELIMINATED',details=f'Node {v}, phase {self.phase}')
-            self.active=survivors
-            if self.dist>=self.n or self.phase>=math.ceil(math.log2(self.n))+1:
-                self.leader=min(self.active,key=lambda v:self.ids[v]) if self.active else min(self.ids,key=self.ids.get)
-                for v,node in s.nodes.items(): node.status='elected' if v==self.leader else 'non-elected'
-            else: self.phase+=1; self.begin(s)
-    def finished(self,s): return self.leader is not None
-    def result(self,s): return {'leaders':[self.leader],'rounds':s.round,'messages':s.message_count,'phases':self.phase+1}
+            for d in (-1, 1):
+                s.send(v, (v + d) % self.n, 'PROBE', origin=v, token=self.ids[v], direction=d, remaining=self.dist)
+
+    def step(self, s):
+        if self.done:
+            return
+
+        for v, node in s.nodes.items():
+            inbox, node.inbox = node.inbox, []
+            for src, kind, p in inbox:
+                if kind == 'PROBE':
+                    origin = p['origin']
+                    token = p['token']
+                    d = p['direction']
+                    rem = p['remaining']
+
+                    if origin == v:
+                        # Full circle traversed! Elect leader immediately!
+                        self.leader = v
+                        self.done = True
+                        node.status = 'elected'
+                        s.log('ELECTED', v, None, f'Probe circled the entire ring back to Node {v}', 'success')
+                        continue
+
+                    if self.ids[v] < token:
+                        s.log('PROBE BLOCKED', v, src, f"Node {v} (ID {self.ids[v]}) blocks token {token}", 'drop')
+                    else:
+                        # token < ids[v]: node v yields
+                        if v in self.active:
+                            node.status = 'non-elected'
+                        
+                        if rem > 1:
+                            s.send(v, (v + d) % self.n, 'PROBE', origin=origin, token=token, direction=d, remaining=rem - 1)
+                        else:
+                            # Reached boundary of phase k: turn around and send RETURN in opposite direction
+                            ret_dir = -d
+                            s.send(v, (v + ret_dir) % self.n, 'RETURN', origin=origin, token=token, direction=d)
+
+                elif kind == 'RETURN':
+                    origin = p['origin']
+                    d = p['direction']  # Outward direction being confirmed
+
+                    if origin == v:
+                        if v in self.replies:
+                            self.replies[v].add(d)
+                    else:
+                        # Forward RETURN along opposite direction towards origin
+                        ret_dir = -d
+                        s.send(v, (v + ret_dir) % self.n, 'RETURN', origin=origin, token=p['token'], direction=d)
+
+        if self.done:
+            for v, node in s.nodes.items():
+                if v != self.leader:
+                    node.status = 'non-elected'
+            return
+
+        # Check phase completion: outbound took dist rounds, return took dist rounds -> 2*dist rounds
+        if s.round - self.phase_start >= 2 * self.dist:
+            survivors = {v for v, r in self.replies.items() if r == {-1, 1}}
+            eliminated = self.active - survivors
+            for v in eliminated:
+                s.nodes[v].status = 'non-elected'
+                s.log('NODE ELIMINATED', details=f"Node {v} (ID {self.ids[v]}) eliminated in phase {self.phase}")
+
+            self.active = survivors
+            # No global shortcut: the winner only learns it won when its probe
+            # (dist == n) travels the whole ring and returns to it (origin == v).
+            self.phase += 1
+            self.begin_phase(s)
+
+    def finished(self, s):
+        return self.done
+
+    def result(self, s):
+        return {'leaders': [self.leader], 'rounds': s.round, 'messages': s.message_count, 'phases': self.phase + 1}
