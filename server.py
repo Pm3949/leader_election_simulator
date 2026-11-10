@@ -72,6 +72,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "Distributed Leader Election Simulator API"}
+
+@app.get("/api/health")
+def api_health():
+    return {"status": "ok", "service": "Distributed Leader Election Simulator API"}
+
 class SimRequest(BaseModel):
     algorithm: str
     nodes: int = 8

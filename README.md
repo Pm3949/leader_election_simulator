@@ -87,3 +87,20 @@ You can deploy this as a single web service on Render's free tier:
      uvicorn server:app --host 0.0.0.0 --port $PORT
      ```
 4. Click **Deploy Web Service**.
+
+---
+
+## Deploy Decoupled (Frontend on Vercel + Backend on Render)
+
+If deploying the frontend on **Vercel** and the backend on **Render**:
+
+1. **Deploy Backend on Render:**
+   - Deploy as a Python Web Service with Start Command: `uvicorn server:app --host 0.0.0.0 --port $PORT`.
+   - Copy your Render URL: `https://<your-service>.onrender.com`.
+
+2. **Deploy Frontend on Vercel:**
+   - In Vercel, import your GitHub repository.
+   - Set **Root Directory** to `frontend`.
+   - In **Environment Variables**, add:
+     - `VITE_API_URL` = `https://<your-service>.onrender.com` (without trailing slash).
+   - Click **Deploy**. Vercel will automatically run `npm run build` and connect directly to your Render backend.

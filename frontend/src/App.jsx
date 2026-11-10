@@ -23,6 +23,9 @@ import NodeInspector from './components/NodeInspector';
 import ComplexityDashboard from './components/ComplexityDashboard';
 import { DEFAULT_ALGORITHMS } from './algorithmsData';
 
+const RAW_API_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE = RAW_API_URL.endsWith('/') ? RAW_API_URL.slice(0, -1) : RAW_API_URL;
+
 export default function App() {
   const [algorithms, setAlgorithms] = useState(DEFAULT_ALGORITHMS);
   const [selectedAlg, setSelectedAlg] = useState('BasicLE-Ring');
@@ -57,7 +60,7 @@ export default function App() {
 
   // 1. Fetch available algorithms on mount
   useEffect(() => {
-    fetch(`/api/algorithms`)
+    fetch(`${API_BASE}/api/algorithms`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -82,7 +85,7 @@ export default function App() {
     setIsPlaying(false);
     if (playTimerRef.current) clearInterval(playTimerRef.current);
 
-    fetch(`/api/simulate`, {
+    fetch(`${API_BASE}/api/simulate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -105,7 +108,10 @@ export default function App() {
       })
       .catch((err) => {
         console.error('Simulation error:', err);
-        setErrorMessage('Simulation engine offline. Run "python server.py" on port 8000.');
+        const failMessage = API_BASE
+          ? `Backend (${API_BASE}) offline or spinning up. Free-tier Render takes ~40-50s to wake from sleep. Please wait and click Retry.`
+          : 'Simulation engine offline. Ensure backend is running or set VITE_API_URL.';
+        setErrorMessage(failMessage);
         setBackendConnected(false);
         setLoading(false);
       });
