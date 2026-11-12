@@ -85,24 +85,42 @@ class SimRequest(BaseModel):
     nodes: int = 8
     seed: int = 7
     id_mode: str = "Sequential"  # "Sequential" or "Shuffled"
-    topology: str = "Ring"       # "Path", "Cycle", "Random connected", "Grid-like", or algorithm's default
+    topology: str = "Cycle"      # General topologies: Path, Cycle, Binary Tree, Grid-like, Two Clusters, Random connected
 
 def create_network_graph(alg_topology: str, n: int, topo_choice: str, seed: int) -> nx.Graph:
     if alg_topology == 'ring':
         return nx.cycle_graph(n)
     if alg_topology == 'complete':
         return nx.complete_graph(n)
+
     if topo_choice == 'Path':
         return nx.path_graph(n)
     if topo_choice == 'Cycle':
         return nx.cycle_graph(n)
+    if topo_choice == 'Binary Tree':
+        return nx.full_rary_tree(2, n)
+    if topo_choice == 'Two Clusters':
+        half = n // 2
+        g1 = nx.complete_graph(half) if half <= 4 else nx.cycle_graph(half)
+        if half >= 5:
+            for i in range(half):
+                g1.add_edge(i, (i + 2) % half)
+        rem = n - half
+        g2 = nx.complete_graph(rem) if rem <= 4 else nx.cycle_graph(rem)
+        if rem >= 5:
+            for i in range(rem):
+                g2.add_edge(i, (i + 2) % rem)
+        g = nx.disjoint_union(g1, g2)
+        g.add_edge(half - 1, half)
+        return g
     if topo_choice == 'Random connected':
         return nx.random_labeled_tree(n, seed=seed)
-    # Grid-like
-    g = nx.grid_2d_graph(max(2, int(n**0.5)), max(2, int(n**0.5)))
+
+    # Grid-like (default fallback)
+    cols = max(2, math.ceil(math.sqrt(n)))
+    rows = max(1, math.ceil(n / cols))
+    g = nx.grid_2d_graph(rows, cols)
     g = nx.convert_node_labels_to_integers(g)
-    for v in range(len(g), n):
-        g.add_edge(v - 1, v)
     return g.subgraph(range(n)).copy()
 
 def compute_node_positions(graph: nx.Graph, alg_topology: str, topo_choice: str, seed: int) -> Dict[int, List[float]]:
@@ -114,31 +132,51 @@ def compute_node_positions(graph: nx.Graph, alg_topology: str, topo_choice: str,
     elif topo_choice == 'Path':
         nodes = list(graph.nodes)
         pos = {node: [float(i - (n - 1) / 2.0), 0.0] for i, node in enumerate(nodes)}
+    elif topo_choice == 'Binary Tree':
+        max_depth = max(1, int(math.floor(math.log2(max(n, 1)))))
+        return {
+            v: [
+                round(((v - ((1 << int(math.floor(math.log2(v + 1)))) - 1)) + 0.5) / (1 << int(math.floor(math.log2(v + 1)))), 4),
+                round(int(math.floor(math.log2(v + 1))) / max_depth, 4)
+            ]
+            for v in graph.nodes
+        }
     elif topo_choice == 'Grid-like':
-        try:
-            pos = nx.spring_layout(graph, seed=seed, iterations=80)
-        except Exception:
-            pos = nx.circular_layout(graph)
+        cols = max(2, math.ceil(math.sqrt(n)))
+        pos = {v: [float(v % cols), float(v // cols)] for v in graph.nodes}
+    elif topo_choice == 'Two Clusters':
+        half = n // 2
+        pos = {}
+        for i in range(half):
+            idx = (half - 1) - i
+            angle = 2 * math.pi * idx / max(1, half)
+            pos[i] = [-1.6 + 0.8 * math.cos(angle), 0.8 * math.sin(angle)]
+        rem = n - half
+        for j in range(rem):
+            angle = math.pi + 2 * math.pi * j / max(1, rem)
+            pos[half + j] = [1.6 + 0.8 * math.cos(angle), 0.8 * math.sin(angle)]
     else:
         try:
-            pos = nx.spring_layout(graph, seed=seed, iterations=80)
+            pos = nx.kamada_kawai_layout(graph)
         except Exception:
-            pos = nx.circular_layout(graph)
+            try:
+                pos = nx.spring_layout(graph, seed=seed, iterations=120)
+            except Exception:
+                pos = nx.circular_layout(graph)
 
-    # Normalize pos to a 0..1 bounding box or centered box with padding
+    # Normalize pos to a 0..1 bounding box (center 1D axes at 0.5)
     xs = [float(p[0]) for p in pos.values()]
     ys = [float(p[1]) for p in pos.values()]
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
-    span_x = max(max_x - min_x, 1e-5)
-    span_y = max(max_y - min_y, 1e-5)
+    raw_span_x = max_x - min_x
+    raw_span_y = max_y - min_y
 
     norm_pos = {}
     for node, p in pos.items():
-        norm_pos[node] = [
-            round((float(p[0]) - min_x) / span_x, 4),
-            round((float(p[1]) - min_y) / span_y, 4)
-        ]
+        nx_val = 0.5 if raw_span_x < 1e-5 else round((float(p[0]) - min_x) / raw_span_x, 4)
+        ny_val = 0.5 if raw_span_y < 1e-5 else round((float(p[1]) - min_y) / raw_span_y, 4)
+        norm_pos[node] = [nx_val, ny_val]
     return norm_pos
 
 @app.get("/api/algorithms")

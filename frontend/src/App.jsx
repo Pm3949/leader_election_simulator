@@ -3,7 +3,6 @@ import confetti from 'canvas-confetti';
 import {
   Network,
   Activity,
-  Layers,
   BarChart3,
   BookOpen,
   AlertCircle,
@@ -12,7 +11,9 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Keyboard,
-  X
+  X,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 import Controls from './components/Controls';
@@ -27,6 +28,28 @@ const RAW_API_URL = import.meta.env.VITE_API_URL || '';
 const API_BASE = RAW_API_URL.endsWith('/') ? RAW_API_URL.slice(0, -1) : RAW_API_URL;
 
 export default function App() {
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('le_sim_theme') || 'dark';
+    }
+    return 'dark';
+  });
+  const isDark = theme === 'dark';
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isDark) {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    } else {
+      root.classList.add('light');
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('le_sim_theme', theme);
+  }, [theme, isDark]);
+
+  const toggleTheme = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+
   const [algorithms, setAlgorithms] = useState(DEFAULT_ALGORITHMS);
   const [selectedAlg, setSelectedAlg] = useState('BasicLE-Ring');
   const [nodeCount, setNodeCount] = useState(8);
@@ -52,8 +75,9 @@ export default function App() {
 
   // Packet Motion & Freeze state synchronized with TimelineBar
   const [isMotionPaused, setIsMotionPaused] = useState(false);
-  const [packetProgress, setPacketProgress] = useState(0.5);
-  const pausedTimeRef = useRef(0.5);
+  const [packetProgress, setPacketProgress] = useState(0);
+  const loopProgressRef = useRef(0);
+  const [animRunId, setAnimRunId] = useState(0);
 
   const playTimerRef = useRef(null);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
@@ -153,21 +177,55 @@ export default function App() {
     };
   }, [isPlaying, speed, simData]);
 
-  // Continuous loop animation for packet progress when not frozen
+  // Reset packet animation on every round or simulation change:
+  // Plays smoothly from 0% to 80% (0.80) and automatically freezes at 80%.
+  useEffect(() => {
+    loopProgressRef.current = 0;
+    setPacketProgress(0);
+    setIsMotionPaused(false);
+    setAnimRunId((id) => id + 1);
+  }, [currentRound, simData]);
+
+  // Packet animation: smoothly advance 0 -> 0.80 (80%) and freeze there
   useEffect(() => {
     if (isMotionPaused) return;
     let animId;
-    let start = performance.now() - (pausedTimeRef.current * 2200);
+    const cycleMs = 1400 / speed;
+    const startLoopProgress = loopProgressRef.current;
+    const startTime = performance.now();
+
     const loop = (now) => {
-      const elapsed = (now - start) / 1000;
-      const cycle = (elapsed % 2.2) / 2.2;
-      setPacketProgress(cycle);
-      pausedTimeRef.current = cycle;
+      const elapsed = now - startTime;
+      const nextProgress = startLoopProgress + elapsed / cycleMs;
+
+      if (nextProgress >= 0.8) {
+        loopProgressRef.current = 0.8;
+        setPacketProgress(0.8);
+        setIsMotionPaused(true);
+        return;
+      }
+
+      loopProgressRef.current = nextProgress;
+      setPacketProgress(nextProgress);
       animId = requestAnimationFrame(loop);
     };
+
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [isMotionPaused]);
+  }, [isMotionPaused, animRunId, speed]);
+
+  const toggleFreezeMotion = () => {
+    if (isMotionPaused) {
+      if (loopProgressRef.current >= 0.8) {
+        loopProgressRef.current = 0;
+        setPacketProgress(0);
+        setAnimRunId((id) => id + 1);
+      }
+      setIsMotionPaused(false);
+    } else {
+      setIsMotionPaused(true);
+    }
+  };
 
   // 4. Keyboard Shortcuts for Pro UX
   useEffect(() => {
@@ -186,7 +244,7 @@ export default function App() {
         e.preventDefault();
         setCurrentRound((prev) => Math.max(0, prev - 1));
       } else if (e.key === 'f' || e.key === 'F') {
-        setIsMotionPaused((prev) => !prev);
+        toggleFreezeMotion();
       } else if (e.key === 'r' || e.key === 'R') {
         setIsPlaying(false);
         setCurrentRound(0);
@@ -199,28 +257,59 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [simData, currentRound]);
+  }, [simData, currentRound, isMotionPaused]);
 
   // Current round data
   const currentRoundData = simData?.rounds?.[currentRound] || null;
   const isFinished = currentRoundData?.finished || false;
   const currentAlgObj = algorithms.find((a) => a.name === selectedAlg) || algorithms[0] || {};
 
+  const navTabClass = (viewKey) =>
+    `flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
+      activeView === viewKey
+        ? isDark
+          ? 'bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700'
+          : 'bg-white text-slate-900 shadow-sm border border-slate-200'
+        : isDark
+        ? 'text-zinc-400 hover:text-zinc-200'
+        : 'text-slate-500 hover:text-slate-900'
+    }`;
+
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#09090b] text-zinc-100 overflow-hidden font-sans">
+    <div
+      className={`flex flex-col h-screen w-screen overflow-hidden font-sans transition-colors duration-200 ${
+        isDark ? 'bg-[#09090b] text-zinc-100' : 'bg-slate-50 text-slate-900'
+      }`}
+    >
       {/* 1. TOP HEADER */}
-      <header className="h-13 bg-[#0c0c0f] border-b border-zinc-800 px-4 sm:px-6 flex items-center justify-between select-none z-30 shrink-0">
+      <header
+        className={`h-13 border-b px-4 sm:px-6 flex items-center justify-between select-none z-30 shrink-0 transition-colors duration-200 ${
+          isDark ? 'bg-[#0c0c0f] border-zinc-800' : 'bg-white border-slate-200'
+        }`}
+      >
         {/* Brand & Title */}
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-zinc-800 border border-zinc-700/80 flex items-center justify-center text-zinc-200">
+          <div
+            className={`w-7 h-7 rounded-lg border flex items-center justify-center ${
+              isDark
+                ? 'bg-zinc-800 border-zinc-700/80 text-zinc-200'
+                : 'bg-slate-100 border-slate-300 text-slate-800'
+            }`}
+          >
             <Network size={15} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-xs tracking-tight text-zinc-100">
+              <span className={`font-semibold text-xs tracking-tight ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
                 Leader Election Simulator
               </span>
-              <span className="hidden md:inline-block px-1.5 py-0.2 rounded text-[10px] font-mono bg-zinc-800 text-zinc-400 border border-zinc-700/80">
+              <span
+                className={`hidden md:inline-block px-1.5 py-0.2 rounded text-[10px] font-mono border ${
+                  isDark
+                    ? 'bg-zinc-800 text-zinc-400 border-zinc-700/80'
+                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                }`}
+              >
                 Pandurangan Ch. 5
               </span>
             </div>
@@ -228,39 +317,22 @@ export default function App() {
         </div>
 
         {/* Center: Segmented View Navigation */}
-        <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5">
-          <button
-            onClick={() => setActiveView('visualizer')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
-              activeView === 'visualizer'
-                ? 'bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
+        <div
+          className={`flex items-center border rounded-lg p-0.5 ${
+            isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-slate-100 border-slate-200'
+          }`}
+        >
+          <button onClick={() => setActiveView('visualizer')} className={navTabClass('visualizer')}>
             <Activity size={13} />
             <span>Network Canvas</span>
           </button>
 
-          <button
-            onClick={() => setActiveView('complexity')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
-              activeView === 'complexity'
-                ? 'bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
+          <button onClick={() => setActiveView('complexity')} className={navTabClass('complexity')}>
             <BarChart3 size={13} />
             <span>Complexity Analytics</span>
           </button>
 
-          <button
-            onClick={() => setActiveView('theory')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
-              activeView === 'theory'
-                ? 'bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
+          <button onClick={() => setActiveView('theory')} className={navTabClass('theory')}>
             <BookOpen size={13} />
             <span>Theory & Invariants</span>
           </button>
@@ -269,11 +341,19 @@ export default function App() {
         {/* Right Status & Tools */}
         <div className="flex items-center gap-2.5">
           {activeView === 'visualizer' && (
-            <div className="hidden lg:flex items-center gap-1 border-r border-zinc-800 pr-2.5">
+            <div
+              className={`hidden lg:flex items-center gap-1 border-r pr-2.5 ${
+                isDark ? 'border-zinc-800' : 'border-slate-200'
+              }`}
+            >
               <button
                 onClick={() => setShowShortcutsModal(true)}
                 title="Keyboard Shortcuts (?)"
-                className="px-2 py-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded text-xs font-mono font-medium flex items-center gap-1 transition-colors"
+                className={`px-2 py-1 rounded text-xs font-mono font-medium flex items-center gap-1 transition-colors ${
+                  isDark
+                    ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                }`}
               >
                 <Keyboard size={13} />
                 <span className="text-[10px]">?</span>
@@ -281,30 +361,53 @@ export default function App() {
               <button
                 onClick={() => setShowLeftSidebar(!showLeftSidebar)}
                 title={showLeftSidebar ? 'Collapse Controls' : 'Expand Controls'}
-                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
+                className={`p-1.5 rounded transition-colors ${
+                  isDark
+                    ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                }`}
               >
                 {showLeftSidebar ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
               </button>
               <button
                 onClick={() => setShowRightDrawer(!showRightDrawer)}
                 title={showRightDrawer ? 'Collapse Telemetry' : 'Expand Telemetry'}
-                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
+                className={`p-1.5 rounded transition-colors ${
+                  isDark
+                    ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                }`}
               >
                 {showRightDrawer ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
               </button>
             </div>
           )}
 
+          {/* Theme Toggle Button */}
+          <button
+            onClick={toggleTheme}
+            title={isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+            aria-label="Toggle color theme"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+              isDark
+                ? 'bg-zinc-900 border-zinc-700/80 text-zinc-300 hover:text-white hover:bg-zinc-800'
+                : 'bg-slate-100 border-slate-300 text-slate-700 hover:text-slate-950 hover:bg-slate-200'
+            }`}
+          >
+            {isDark ? <Sun size={13} className="text-amber-400" /> : <Moon size={13} className="text-sky-600" />}
+            <span className="hidden sm:inline text-[11px]">{isDark ? 'Light' : 'Dark'}</span>
+          </button>
+
           {/* Engine Connectivity Badge */}
           <div className="flex items-center gap-1.5 text-[11px] font-mono">
             {backendConnected ? (
-              <span className="flex items-center gap-1.5 text-zinc-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span className={`flex items-center gap-1.5 ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                 <span className="hidden sm:inline">Engine Live</span>
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 text-rose-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+              <span className="flex items-center gap-1.5 text-rose-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
                 <span className="hidden sm:inline">Offline</span>
               </span>
             )}
@@ -314,14 +417,24 @@ export default function App() {
 
       {/* Error Banner */}
       {errorMessage && (
-        <div className="bg-rose-950/70 border-b border-rose-900 px-4 py-2 text-xs text-rose-200 flex items-center justify-between shrink-0">
+        <div
+          className={`border-b px-4 py-2 text-xs flex items-center justify-between shrink-0 ${
+            isDark
+              ? 'bg-rose-950/70 border-rose-900 text-rose-200'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}
+        >
           <div className="flex items-center gap-2">
-            <AlertCircle size={14} className="text-rose-400 shrink-0" />
+            <AlertCircle size={14} className={`shrink-0 ${isDark ? 'text-rose-400' : 'text-rose-600'}`} />
             <span>{errorMessage}</span>
           </div>
           <button
             onClick={runSimulation}
-            className="px-2 py-0.5 bg-rose-900 hover:bg-rose-800 text-white rounded font-mono text-[10px]"
+            className={`px-2 py-0.5 rounded font-mono text-[10px] ${
+              isDark
+                ? 'bg-rose-900 hover:bg-rose-800 text-white'
+                : 'bg-rose-600 hover:bg-rose-700 text-white'
+            }`}
           >
             Retry
           </button>
@@ -332,7 +445,7 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden relative">
         {/* Left: Controls Panel */}
         {showLeftSidebar && activeView === 'visualizer' && (
-          <div className="w-72 lg:w-80 h-full shrink-0 border-r border-zinc-800 z-20">
+          <div className={`w-72 lg:w-80 h-full shrink-0 border-r z-20 ${isDark ? 'border-zinc-800' : 'border-slate-200'}`}>
             <Controls
               algorithms={algorithms}
               selectedAlg={selectedAlg}
@@ -347,6 +460,7 @@ export default function App() {
               onChangeTopology={(t) => setTopology(t)}
               onReset={runSimulation}
               loading={loading}
+              isDark={isDark}
             />
           </div>
         )}
@@ -364,6 +478,7 @@ export default function App() {
                   isFinished={isFinished}
                   isMotionPaused={isMotionPaused}
                   animTime={packetProgress}
+                  isDark={isDark}
                 />
               </div>
 
@@ -407,24 +522,26 @@ export default function App() {
                 messageCount={currentRoundData?.message_count ?? 0}
                 isFinished={isFinished}
                 isMotionPaused={isMotionPaused}
-                onToggleFreezeMotion={() => setIsMotionPaused(!isMotionPaused)}
+                onToggleFreezeMotion={toggleFreezeMotion}
                 packetProgress={packetProgress}
                 onSeekPacketProgress={(val) => {
                   setIsMotionPaused(true);
                   setPacketProgress(val);
-                  pausedTimeRef.current = val;
+                  loopProgressRef.current = val;
                 }}
+                isDark={isDark}
               />
             </div>
 
             {/* Right: Telemetry & In-Flight Drawer */}
             {showRightDrawer && (
-              <div className="w-80 lg:w-96 h-full shrink-0 border-l border-zinc-800 z-20">
+              <div className={`w-80 lg:w-96 h-full shrink-0 border-l z-20 ${isDark ? 'border-zinc-800' : 'border-slate-200'}`}>
                 <StorylineDrawer
                   currentRoundData={currentRoundData}
                   allEvents={simData?.rounds?.flatMap((r) => r.events || []) || []}
                   nodes={simData?.graph?.nodes || []}
                   onSelectNode={(id) => setSelectedNode(id)}
+                  isDark={isDark}
                 />
               </div>
             )}
@@ -438,64 +555,95 @@ export default function App() {
               simData={simData}
               selectedAlg={selectedAlg}
               nodeCount={nodeCount}
+              isDark={isDark}
             />
           </div>
         )}
 
         {/* Theory & Invariants Tab */}
         {activeView === 'theory' && (
-          <div className="flex-1 h-full overflow-y-auto p-8 bg-[#09090b] flex flex-col gap-5 max-w-4xl mx-auto text-zinc-300">
-            <div className="border-b border-zinc-800 pb-4">
-              <div className="flex items-center gap-1.5 text-zinc-400 font-medium text-xs uppercase tracking-wider mb-1">
-                <BookOpen size={14} />
-                <span>Chapter 5 Formal Invariants</span>
-              </div>
-              <h2 className="text-xl font-bold text-zinc-100">
-                {currentAlgObj.title || currentAlgObj.name}
-              </h2>
-              <p className="text-xs text-zinc-400 mt-1">
-                {currentAlgObj.summary || currentAlgObj.description}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800">
-                <div className="text-zinc-500 text-[10.5px] font-semibold uppercase tracking-wider">Topology Model</div>
-                <div className="text-base font-semibold text-zinc-200 font-mono mt-1 capitalize">
-                  {currentAlgObj.topology} Graph
-                </div>
-              </div>
-              <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800">
-                <div className="text-zinc-500 text-[10.5px] font-semibold uppercase tracking-wider">Asymptotic Bound</div>
-                <div className="text-base font-semibold text-emerald-400 font-mono mt-1">
-                  {currentAlgObj.complexity}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2.5">
-              <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-                Step-by-Step Protocol Invariants
-              </h3>
-              {(currentAlgObj.steps || []).map((st, idx) => (
+          <div className={`flex-1 h-full overflow-y-auto transition-colors duration-200 ${isDark ? 'bg-[#09090b]' : 'bg-slate-50'}`}>
+            <div
+              className={`p-8 flex flex-col gap-5 max-w-4xl mx-auto ${
+                isDark ? 'text-zinc-300' : 'text-slate-700'
+              }`}
+            >
+              <div className={`border-b pb-4 ${isDark ? 'border-zinc-800' : 'border-slate-200'}`}>
                 <div
-                  key={idx}
-                  className="p-3.5 rounded-xl bg-zinc-900/50 border border-zinc-800 flex flex-col gap-1.5"
+                  className={`flex items-center gap-1.5 font-medium text-xs uppercase tracking-wider mb-1 ${
+                    isDark ? 'text-zinc-400' : 'text-slate-500'
+                  }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono text-[9.5px] font-medium">
-                      {st.tag || `STEP ${st.step_number}`}
-                    </span>
-                    <span className="font-semibold text-zinc-200 text-xs">
-                      {st.title}
-                    </span>
-                  </div>
-                  <div
-                    className="text-zinc-400 text-xs leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: st.content }}
-                  />
+                  <BookOpen size={14} />
+                  <span>Chapter 5 Formal Invariants</span>
                 </div>
-              ))}
+                <h2 className={`text-xl font-bold ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                  {currentAlgObj.title || currentAlgObj.name}
+                </h2>
+                <p className={`text-xs mt-1 ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
+                  {currentAlgObj.summary || currentAlgObj.description}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div
+                  className={`p-3.5 rounded-xl border ${
+                    isDark ? 'bg-zinc-900/60 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+                  }`}
+                >
+                  <div className={`text-[10.5px] font-semibold uppercase tracking-wider ${isDark ? 'text-zinc-500' : 'text-slate-500'}`}>
+                    Topology Model
+                  </div>
+                  <div className={`text-base font-semibold font-mono mt-1 capitalize ${isDark ? 'text-zinc-200' : 'text-slate-900'}`}>
+                    {currentAlgObj.topology} Graph
+                  </div>
+                </div>
+                <div
+                  className={`p-3.5 rounded-xl border ${
+                    isDark ? 'bg-zinc-900/60 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+                  }`}
+                >
+                  <div className={`text-[10.5px] font-semibold uppercase tracking-wider ${isDark ? 'text-zinc-500' : 'text-slate-500'}`}>
+                    Asymptotic Bound
+                  </div>
+                  <div className={`text-base font-semibold font-mono mt-1 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                    {currentAlgObj.complexity}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2.5">
+                <h3 className={`text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
+                  Step-by-Step Protocol Invariants
+                </h3>
+                {(currentAlgObj.steps || []).map((st, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-3.5 rounded-xl border flex flex-col gap-1.5 ${
+                      isDark ? 'bg-zinc-900/50 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-1.5 py-0.5 rounded font-mono text-[9.5px] font-medium ${
+                          isDark
+                            ? 'bg-zinc-800 text-zinc-300'
+                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        {st.tag || `STEP ${st.step_number}`}
+                      </span>
+                      <span className={`font-semibold text-xs ${isDark ? 'text-zinc-200' : 'text-slate-900'}`}>
+                        {st.title}
+                      </span>
+                    </div>
+                    <div
+                      className={`text-xs leading-relaxed ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}
+                      dangerouslySetInnerHTML={{ __html: st.content }}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -509,6 +657,7 @@ export default function App() {
           currentRoundData={currentRoundData}
           allRounds={simData?.rounds || []}
           onClose={() => setSelectedNode(null)}
+          isDark={isDark}
         />
       )}
 
@@ -519,47 +668,61 @@ export default function App() {
           onClick={() => setShowShortcutsModal(false)}
         >
           <div
-            className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-2xl flex flex-col gap-4 text-zinc-300"
+            className={`w-full max-w-md border rounded-2xl p-5 shadow-2xl flex flex-col gap-4 ${
+              isDark
+                ? 'bg-zinc-900 border-zinc-800 text-zinc-300'
+                : 'bg-white border-slate-200 text-slate-700'
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+            <div
+              className={`flex items-center justify-between pb-3 border-b ${
+                isDark ? 'border-zinc-800' : 'border-slate-200'
+              }`}
+            >
               <div className="flex items-center gap-2">
-                <Keyboard size={16} className="text-zinc-400" />
-                <h3 className="font-semibold text-sm text-zinc-100">Keyboard Shortcuts</h3>
+                <Keyboard size={16} className={isDark ? 'text-zinc-400' : 'text-slate-500'} />
+                <h3 className={`font-semibold text-sm ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                  Keyboard Shortcuts
+                </h3>
               </div>
               <button
                 onClick={() => setShowShortcutsModal(false)}
-                className="p-1 text-zinc-400 hover:text-white rounded"
+                className={`p-1 rounded ${isDark ? 'text-zinc-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}
               >
                 <X size={16} />
               </button>
             </div>
 
             <div className="grid grid-cols-1 gap-2 text-xs">
-              <div className="flex items-center justify-between py-1.5 border-b border-zinc-800/60">
-                <span className="text-zinc-400">Play / Pause Execution</span>
-                <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-zinc-700">Space</kbd>
-              </div>
-              <div className="flex items-center justify-between py-1.5 border-b border-zinc-800/60">
-                <span className="text-zinc-400">Step One Round Forward</span>
-                <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-zinc-700">&rarr;</kbd>
-              </div>
-              <div className="flex items-center justify-between py-1.5 border-b border-zinc-800/60">
-                <span className="text-zinc-400">Step One Round Backward</span>
-                <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-zinc-700">&larr;</kbd>
-              </div>
-              <div className="flex items-center justify-between py-1.5 border-b border-zinc-800/60">
-                <span className="text-zinc-400">Freeze / Resume Messages Mid-Flight</span>
-                <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-zinc-700">F</kbd>
-              </div>
-              <div className="flex items-center justify-between py-1.5 border-b border-zinc-800/60">
-                <span className="text-zinc-400">Reset to Round 0</span>
-                <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-zinc-700">R</kbd>
-              </div>
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-zinc-400">Close Slideout / Modal</span>
-                <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[11px] border border-zinc-700">Esc</kbd>
-              </div>
+              {[
+                { label: 'Play / Pause Execution', key: 'Space' },
+                { label: 'Step One Round Forward', key: '→' },
+                { label: 'Step One Round Backward', key: '←' },
+                { label: 'Freeze / Resume Messages Mid-Flight', key: 'F' },
+                { label: 'Reset to Round 0', key: 'R' },
+                { label: 'Close Slideout / Modal', key: 'Esc' },
+              ].map((item, i, arr) => (
+                <div
+                  key={item.key}
+                  className={`flex items-center justify-between py-1.5 ${
+                    i < arr.length - 1
+                      ? `border-b ${isDark ? 'border-zinc-800/60' : 'border-slate-200'}`
+                      : ''
+                  }`}
+                >
+                  <span className={isDark ? 'text-zinc-400' : 'text-slate-600'}>{item.label}</span>
+                  <kbd
+                    className={`px-2 py-0.5 rounded font-mono text-[11px] border ${
+                      isDark
+                        ? 'bg-zinc-800 text-zinc-200 border-zinc-700'
+                        : 'bg-slate-100 text-slate-800 border-slate-300'
+                    }`}
+                  >
+                    {item.key}
+                  </kbd>
+                </div>
+              ))}
             </div>
           </div>
         </div>

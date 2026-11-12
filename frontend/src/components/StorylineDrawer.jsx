@@ -5,19 +5,15 @@ import {
   ScrollText,
   Send,
   Download,
-  ArrowRight,
-  Shield,
-  Activity,
-  Layers,
-  CheckCircle2,
-  AlertCircle
+  ArrowRight
 } from 'lucide-react';
 
 export default function StorylineDrawer({
   currentRoundData,
   allEvents = [],
   nodes = [],
-  onSelectNode
+  onSelectNode,
+  isDark = true
 }) {
   const [activeTab, setActiveTab] = useState('in_flight');
 
@@ -47,62 +43,107 @@ export default function StorylineDrawer({
     URL.revokeObjectURL(url);
   };
 
+  const tabClass = (key) =>
+    `flex items-center gap-1.5 py-3 px-2.5 text-xs font-medium border-b-2 transition-all ${
+      activeTab === key
+        ? isDark
+          ? 'border-sky-400 text-zinc-100 bg-zinc-900/40'
+          : 'border-sky-600 text-slate-900 bg-white'
+        : isDark
+        ? 'border-transparent text-zinc-400 hover:text-zinc-200'
+        : 'border-transparent text-slate-500 hover:text-slate-900'
+    }`;
+
   return (
-    <div className="flex flex-col h-full bg-[#0e0e11] border-l border-zinc-800/80 select-none text-zinc-300">
+    <div
+      className={`flex flex-col h-full border-l select-none transition-colors duration-200 ${
+        isDark
+          ? 'bg-[#0e0e11] border-zinc-800/80 text-zinc-300'
+          : 'bg-white border-slate-200 text-slate-700'
+      }`}
+    >
       {/* Tab Navigation Header */}
-      <div className="flex items-center justify-between border-b border-zinc-800 px-3 bg-[#0a0a0d] shrink-0">
+      <div
+        className={`flex items-center justify-between border-b px-3 shrink-0 ${
+          isDark ? 'border-zinc-800 bg-[#0a0a0d]' : 'border-slate-200 bg-slate-50'
+        }`}
+      >
         <div className="flex items-center gap-0.5">
-          <button
-            onClick={() => setActiveTab('in_flight')}
-            className={`flex items-center gap-1.5 py-3 px-2.5 text-xs font-medium border-b-2 transition-all ${
-              activeTab === 'in_flight'
-                ? 'border-sky-400 text-zinc-100 bg-zinc-900/40'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <Send size={13} className={activeTab === 'in_flight' ? 'text-sky-400' : 'text-zinc-500'} />
+          <button onClick={() => setActiveTab('in_flight')} className={tabClass('in_flight')}>
+            <Send
+              size={13}
+              className={
+                activeTab === 'in_flight'
+                  ? isDark
+                    ? 'text-sky-400'
+                    : 'text-sky-600'
+                  : isDark
+                  ? 'text-zinc-500'
+                  : 'text-slate-400'
+              }
+            />
             <span>In Flight</span>
-            <span className="px-1.5 py-0.2 rounded text-[10px] bg-zinc-800 text-zinc-300 font-mono">
+            <span
+              className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
+                isDark ? 'bg-zinc-800 text-zinc-300' : 'bg-slate-200 text-slate-700'
+              }`}
+            >
               {inFlight.length}
             </span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('storyline')}
-            className={`flex items-center gap-1.5 py-3 px-2.5 text-xs font-medium border-b-2 transition-all ${
-              activeTab === 'storyline'
-                ? 'border-sky-400 text-zinc-100 bg-zinc-900/40'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <ListTree size={13} className={activeTab === 'storyline' ? 'text-sky-400' : 'text-zinc-500'} />
+          <button onClick={() => setActiveTab('storyline')} className={tabClass('storyline')}>
+            <ListTree
+              size={13}
+              className={
+                activeTab === 'storyline'
+                  ? isDark
+                    ? 'text-sky-400'
+                    : 'text-sky-600'
+                  : isDark
+                  ? 'text-zinc-500'
+                  : 'text-slate-400'
+              }
+            />
             <span>Trace</span>
-            <span className="px-1.5 py-0.2 rounded text-[10px] bg-zinc-800 text-zinc-400 font-mono">
+            <span
+              className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
+                isDark ? 'bg-zinc-800 text-zinc-400' : 'bg-slate-200 text-slate-600'
+              }`}
+            >
               {storylines.length}
             </span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('nodes')}
-            className={`flex items-center gap-1.5 py-3 px-2.5 text-xs font-medium border-b-2 transition-all ${
-              activeTab === 'nodes'
-                ? 'border-sky-400 text-zinc-100 bg-zinc-900/40'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <TableProperties size={13} className={activeTab === 'nodes' ? 'text-sky-400' : 'text-zinc-500'} />
+          <button onClick={() => setActiveTab('nodes')} className={tabClass('nodes')}>
+            <TableProperties
+              size={13}
+              className={
+                activeTab === 'nodes'
+                  ? isDark
+                    ? 'text-sky-400'
+                    : 'text-sky-600'
+                  : isDark
+                  ? 'text-zinc-500'
+                  : 'text-slate-400'
+              }
+            />
             <span>Nodes</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('events')}
-            className={`flex items-center gap-1.5 py-3 px-2.5 text-xs font-medium border-b-2 transition-all ${
-              activeTab === 'events'
-                ? 'border-sky-400 text-zinc-100 bg-zinc-900/40'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <ScrollText size={13} className={activeTab === 'events' ? 'text-sky-400' : 'text-zinc-500'} />
+          <button onClick={() => setActiveTab('events')} className={tabClass('events')}>
+            <ScrollText
+              size={13}
+              className={
+                activeTab === 'events'
+                  ? isDark
+                    ? 'text-sky-400'
+                    : 'text-sky-600'
+                  : isDark
+                  ? 'text-zinc-500'
+                  : 'text-slate-400'
+              }
+            />
             <span>Audit</span>
           </button>
         </div>
@@ -111,7 +152,11 @@ export default function StorylineDrawer({
           <button
             onClick={exportCsv}
             title="Export CSV Audit Trail"
-            className="flex items-center gap-1 text-[10px] text-zinc-300 hover:text-white px-2 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded transition-colors font-mono"
+            className={`flex items-center gap-1 text-[10px] px-2 py-1 border rounded transition-colors font-mono ${
+              isDark
+                ? 'text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 border-zinc-700'
+                : 'text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-100 border-slate-300'
+            }`}
           >
             <Download size={11} />
             <span>CSV</span>
@@ -121,16 +166,22 @@ export default function StorylineDrawer({
 
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto p-3.5">
-        {/* 1. IN-FLIGHT MESSAGES TAB (Clear where-to-where telemetry) */}
+        {/* 1. IN-FLIGHT MESSAGES TAB */}
         {activeTab === 'in_flight' && (
           <div className="flex flex-col gap-2.5">
-            <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-0.5 flex items-center justify-between">
+            <div
+              className={`text-[10px] font-semibold uppercase tracking-wider mb-0.5 flex items-center justify-between ${
+                isDark ? 'text-zinc-500' : 'text-slate-500'
+              }`}
+            >
               <span>Delivery Queued for Round {currentRoundData ? currentRoundData.round + 1 : 1}</span>
-              <span className="font-mono text-zinc-400">{inFlight.length} In-Flight</span>
+              <span className={`font-mono ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
+                {inFlight.length} In-Flight
+              </span>
             </div>
 
             {inFlight.length === 0 ? (
-              <div className="text-center py-12 text-zinc-500 text-xs">
+              <div className={`text-center py-12 text-xs ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>
                 No active packets queued for transmission in this synchronous round.
               </div>
             ) : (
@@ -141,26 +192,48 @@ export default function StorylineDrawer({
                 return (
                   <div
                     key={idx}
-                    className="p-3 bg-zinc-900/70 rounded-xl border border-zinc-800 flex flex-col gap-2 hover:border-zinc-700 transition-colors"
+                    className={`p-3 rounded-xl border flex flex-col gap-2 transition-colors ${
+                      isDark
+                        ? 'bg-zinc-900/70 border-zinc-800 hover:border-zinc-700'
+                        : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                    }`}
                   >
                     {/* Top Row: Path Header */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 font-mono text-xs font-semibold">
-                        <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-200 border border-zinc-700">
-                          n{msg.src} <span className="text-[10px] text-zinc-400">(ID:{srcNode?.id_value ?? '?'})</span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded border ${
+                            isDark
+                              ? 'bg-zinc-800 text-zinc-200 border-zinc-700'
+                              : 'bg-white text-slate-900 border-slate-300'
+                          }`}
+                        >
+                          n{msg.src}{' '}
+                          <span className={`text-[10px] ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                            (ID:{srcNode?.id_value ?? '?'})
+                          </span>
                         </span>
-                        <ArrowRight size={13} className="text-zinc-500 shrink-0" />
-                        <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-200 border border-zinc-700">
-                          n{msg.dst} <span className="text-[10px] text-zinc-400">(ID:{dstNode?.id_value ?? '?'})</span>
+                        <ArrowRight size={13} className={isDark ? 'text-zinc-500 shrink-0' : 'text-slate-400 shrink-0'} />
+                        <span
+                          className={`px-1.5 py-0.5 rounded border ${
+                            isDark
+                              ? 'bg-zinc-800 text-zinc-200 border-zinc-700'
+                              : 'bg-white text-slate-900 border-slate-300'
+                          }`}
+                        >
+                          n{msg.dst}{' '}
+                          <span className={`text-[10px] ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                            (ID:{dstNode?.id_value ?? '?'})
+                          </span>
                         </span>
                       </div>
 
                       <span
                         className="px-2 py-0.5 rounded text-[9.5px] font-mono font-medium uppercase tracking-wider border"
                         style={{
-                          backgroundColor: `${msg.color || '#38bdf8'}15`,
-                          color: msg.color || '#38bdf8',
-                          borderColor: `${msg.color || '#38bdf8'}30`
+                          backgroundColor: `${msg.color || '#38bdf8'}18`,
+                          color: msg.color || '#0284c7',
+                          borderColor: `${msg.color || '#38bdf8'}40`
                         }}
                       >
                         {msg.kind || 'TOKEN'}
@@ -168,9 +241,13 @@ export default function StorylineDrawer({
                     </div>
 
                     {/* Payload Details */}
-                    <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-zinc-800/60 font-mono">
-                      <span className="text-zinc-400">Payload:</span>
-                      <span className="text-zinc-200 font-semibold">{msg.label}</span>
+                    <div
+                      className={`flex items-center justify-between text-[11px] pt-1.5 border-t font-mono ${
+                        isDark ? 'border-zinc-800/60' : 'border-slate-200'
+                      }`}
+                    >
+                      <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>Payload:</span>
+                      <span className={`font-semibold ${isDark ? 'text-zinc-200' : 'text-slate-900'}`}>{msg.label}</span>
                     </div>
                   </div>
                 );
@@ -182,37 +259,47 @@ export default function StorylineDrawer({
         {/* 2. STORYLINE TAB */}
         {activeTab === 'storyline' && (
           <div className="flex flex-col gap-2">
-            <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-0.5 flex items-center justify-between">
+            <div
+              className={`text-[10px] font-semibold uppercase tracking-wider mb-0.5 flex items-center justify-between ${
+                isDark ? 'text-zinc-500' : 'text-slate-500'
+              }`}
+            >
               <span>Round {currentRoundData?.round} Execution Trace</span>
-              <span className="font-mono text-zinc-400">{storylines.length} Actions</span>
+              <span className={`font-mono ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
+                {storylines.length} Actions
+              </span>
             </div>
 
             {storylines.length === 0 ? (
-              <div className="text-center py-12 text-zinc-500 text-xs">
+              <div className={`text-center py-12 text-xs ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>
                 No state transition events logged for this round.
               </div>
             ) : (
               storylines.map((item, idx) => (
                 <div
                   key={idx}
-                  className="p-3 bg-zinc-900/60 rounded-xl border border-zinc-800/80 flex flex-col gap-1.5 hover:border-zinc-700 transition-colors"
+                  className={`p-3 rounded-xl border flex flex-col gap-1.5 transition-colors ${
+                    isDark
+                      ? 'bg-zinc-900/60 border-zinc-800/80 hover:border-zinc-700'
+                      : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-xs text-zinc-200">
+                    <span className={`font-semibold text-xs ${isDark ? 'text-zinc-200' : 'text-slate-900'}`}>
                       {item.title}
                     </span>
                     <span
                       className="px-1.5 py-0.2 rounded text-[9px] font-mono uppercase font-semibold border"
                       style={{
-                        backgroundColor: `${item.badge_color || '#38bdf8'}15`,
-                        color: item.badge_color || '#38bdf8',
-                        borderColor: `${item.badge_color || '#38bdf8'}30`,
+                        backgroundColor: `${item.badge_color || '#38bdf8'}18`,
+                        color: item.badge_color || '#0284c7',
+                        borderColor: `${item.badge_color || '#38bdf8'}40`,
                       }}
                     >
                       {item.badge}
                     </span>
                   </div>
-                  <div className="text-[11.5px] text-zinc-400 leading-relaxed font-sans">
+                  <div className={`text-[11.5px] leading-relaxed font-sans ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
                     {item.detail}
                   </div>
                 </div>
@@ -224,9 +311,13 @@ export default function StorylineDrawer({
         {/* 3. NODES TAB */}
         {activeTab === 'nodes' && (
           <div className="flex flex-col gap-1.5">
-            <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-0.5 flex items-center justify-between">
+            <div
+              className={`text-[10px] font-semibold uppercase tracking-wider mb-0.5 flex items-center justify-between ${
+                isDark ? 'text-zinc-500' : 'text-slate-500'
+              }`}
+            >
               <span>Node States in Round {currentRoundData?.round}</span>
-              <span className="font-mono text-zinc-400">{nodes.length} Nodes</span>
+              <span className={`font-mono ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>{nodes.length} Nodes</span>
             </div>
 
             <div className="grid grid-cols-1 gap-1.5">
@@ -238,27 +329,42 @@ export default function StorylineDrawer({
                   <div
                     key={node.node_id}
                     onClick={() => onSelectNode(node.node_id)}
-                    className="p-2.5 bg-zinc-900/60 hover:bg-zinc-800/60 border border-zinc-800 rounded-lg cursor-pointer transition-all flex items-center justify-between"
+                    className={`p-2.5 border rounded-lg cursor-pointer transition-all flex items-center justify-between ${
+                      isDark
+                        ? 'bg-zinc-900/60 hover:bg-zinc-800/60 border-zinc-800'
+                        : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
+                    }`}
                   >
                     <div className="flex items-center gap-2.5">
                       <div
                         className={`w-7 h-7 rounded-md flex items-center justify-center font-mono font-bold text-xs ${
                           isLeader
-                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-600'
+                            ? isDark
+                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-600'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-400'
                             : st.status === 'candidate'
-                            ? 'bg-amber-950 text-amber-300 border border-amber-700'
+                            ? isDark
+                              ? 'bg-amber-950 text-amber-300 border border-amber-700'
+                              : 'bg-amber-50 text-amber-700 border border-amber-400'
                             : st.status === 'non-elected'
-                            ? 'bg-zinc-800 text-zinc-500'
-                            : 'bg-zinc-800 text-zinc-200 border border-zinc-700'
+                            ? isDark
+                              ? 'bg-zinc-800 text-zinc-500'
+                              : 'bg-slate-200 text-slate-500'
+                            : isDark
+                            ? 'bg-zinc-800 text-zinc-200 border border-zinc-700'
+                            : 'bg-white text-slate-800 border border-slate-300'
                         }`}
                       >
                         {st.id}
                       </div>
                       <div>
-                        <div className="text-xs font-semibold text-zinc-200 font-mono">
-                          n{node.node_id} <span className="text-zinc-500 font-sans font-normal">(ID: {st.id})</span>
+                        <div className={`text-xs font-semibold font-mono ${isDark ? 'text-zinc-200' : 'text-slate-900'}`}>
+                          n{node.node_id}{' '}
+                          <span className={`font-sans font-normal ${isDark ? 'text-zinc-500' : 'text-slate-500'}`}>
+                            (ID: {st.id})
+                          </span>
                         </div>
-                        <div className="text-[10px] text-zinc-500 font-mono truncate max-w-[170px]">
+                        <div className={`text-[10px] font-mono truncate max-w-[170px] ${isDark ? 'text-zinc-500' : 'text-slate-500'}`}>
                           {Object.keys(st.state || {}).length > 0
                             ? Object.entries(st.state)
                                 .map(([k, v]) => `${k}:${v}`)
@@ -271,12 +377,20 @@ export default function StorylineDrawer({
                     <span
                       className={`px-2 py-0.5 rounded text-[9.5px] font-mono font-medium uppercase ${
                         isLeader
-                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                          ? isDark
+                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-300'
                           : st.status === 'candidate'
-                          ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                          ? isDark
+                            ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                            : 'bg-amber-50 text-amber-700 border border-amber-300'
                           : st.status === 'non-elected'
-                          ? 'bg-zinc-800/60 text-zinc-500'
-                          : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                          ? isDark
+                            ? 'bg-zinc-800/60 text-zinc-500'
+                            : 'bg-slate-200 text-slate-500'
+                          : isDark
+                          ? 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                          : 'bg-white text-slate-700 border border-slate-300'
                       }`}
                     >
                       {st.status}
@@ -291,26 +405,34 @@ export default function StorylineDrawer({
         {/* 4. EVENTS AUDIT TAB */}
         {activeTab === 'events' && (
           <div className="flex flex-col gap-1.5">
-            <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-0.5 flex items-center justify-between">
+            <div
+              className={`text-[10px] font-semibold uppercase tracking-wider mb-0.5 flex items-center justify-between ${
+                isDark ? 'text-zinc-500' : 'text-slate-500'
+              }`}
+            >
               <span>Events in Round {currentRoundData?.round}</span>
-              <span className="font-mono text-zinc-400">{roundEvents.length} Events</span>
+              <span className={`font-mono ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
+                {roundEvents.length} Events
+              </span>
             </div>
 
             {roundEvents.length === 0 ? (
-              <div className="text-center py-12 text-zinc-500 text-xs">
+              <div className={`text-center py-12 text-xs ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>
                 No events in round {currentRoundData?.round}.
               </div>
             ) : (
               roundEvents.map((ev, idx) => (
                 <div
                   key={idx}
-                  className="p-2 bg-zinc-900/60 border border-zinc-800 rounded-lg text-xs font-mono flex flex-col gap-1"
+                  className={`p-2 border rounded-lg text-xs font-mono flex flex-col gap-1 ${
+                    isDark ? 'bg-zinc-900/60 border-zinc-800' : 'bg-slate-50 border-slate-200'
+                  }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-zinc-200 font-semibold">{ev.event}</span>
-                    <span className="text-[10px] text-zinc-500">R{ev.round}</span>
+                    <span className={`font-semibold ${isDark ? 'text-zinc-200' : 'text-slate-900'}`}>{ev.event}</span>
+                    <span className={`text-[10px] ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>R{ev.round}</span>
                   </div>
-                  <div className="text-[11px] text-zinc-400 font-sans">
+                  <div className={`text-[11px] font-sans ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
                     {ev.src !== null && ev.dst !== null
                       ? `n${ev.src} → n${ev.dst}: `
                       : ev.src !== null

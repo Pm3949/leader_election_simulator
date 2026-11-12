@@ -1,17 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Crown,
-  Sparkles,
-  ArrowRight,
-  Eye,
   Send,
-  ChevronRight,
   ChevronDown,
   ChevronUp,
-  Info,
-  Layers,
-  Pause,
-  Play
+  Info
 } from 'lucide-react';
 
 export default function NetworkCanvas({
@@ -21,7 +14,8 @@ export default function NetworkCanvas({
   onSelectNode,
   isFinished = false,
   isMotionPaused = false,
-  animTime = 0.5
+  animTime = 0.5,
+  isDark = true
 }) {
   const containerRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 900, height: 600 });
@@ -47,9 +41,13 @@ export default function NetworkCanvas({
 
   if (!graph || !graph.nodes || !currentRoundData) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-[#09090b] text-zinc-500 font-mono-code text-xs">
+      <div
+        className={`w-full h-full flex items-center justify-center font-mono-code text-xs ${
+          isDark ? 'bg-[#09090b] text-zinc-500' : 'bg-slate-50 text-slate-500'
+        }`}
+      >
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-zinc-600 animate-ping"></div>
+          <div className={`w-2 h-2 rounded-full animate-ping ${isDark ? 'bg-zinc-600' : 'bg-slate-400'}`}></div>
           <span>Synthesizing network topology...</span>
         </div>
       </div>
@@ -86,55 +84,55 @@ export default function NetworkCanvas({
   const centerY = height / 2;
   const ringRadius = Math.min(drawWidth, drawHeight) * 0.46;
 
-  // Quadratic Bezier curve offset to cleanly separate opposing directions
-  const getCurvedEdgePath = (srcId, dstId) => {
+  // Single straight link interpolation so opposing messages (u->v and v->u) travel on the same single link
+  const getPointOnLink = (srcId, dstId, t) => {
     const p1 = nodePosMap[srcId];
     const p2 = nodePosMap[dstId];
-    if (!p1 || !p2) return '';
+    if (!p1 || !p2) return { x: 0, y: 0, angle: 0, dx: 0, dy: 0, dist: 1 };
 
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
     const dist = Math.hypot(dx, dy) || 1;
-    const nx = -dy / dist;
-    const ny = dx / dist;
-
-    const curvature = Math.min(24, dist * 0.1);
-    const midX = (p1.x + p2.x) / 2 + nx * curvature;
-    const midY = (p1.y + p2.y) / 2 + ny * curvature;
-
-    return `M ${p1.x} ${p1.y} Q ${midX} ${midY} ${p2.x} ${p2.y}`;
+    return {
+      x: p1.x + dx * t,
+      y: p1.y + dy * t,
+      angle: (Math.atan2(dy, dx) * 180) / Math.PI,
+      dx,
+      dy,
+      dist,
+    };
   };
 
-  const getPointOnCurve = (srcId, dstId, t) => {
-    const p1 = nodePosMap[srcId];
-    const p2 = nodePosMap[dstId];
-    if (!p1 || !p2) return { x: 0, y: 0 };
+  // Group active in-flight messages by canonical undirected link key "min-max"
+  // so multiple or bidirectional messages share ONE single link visually.
+  const linkGroups = {};
+  inFlight.forEach((msg) => {
+    const u = Math.min(msg.src, msg.dst);
+    const v = Math.max(msg.src, msg.dst);
+    const key = `${u}-${v}`;
+    if (!linkGroups[key]) {
+      linkGroups[key] = { u, v, msgs: [] };
+    }
+    linkGroups[key].msgs.push(msg);
+  });
 
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const dist = Math.hypot(dx, dy) || 1;
-    const nx = -dy / dist;
-    const ny = dx / dist;
-    const curvature = Math.min(24, dist * 0.1);
-    const midX = (p1.x + p2.x) / 2 + nx * curvature;
-    const midY = (p1.y + p2.y) / 2 + ny * curvature;
-
-    const u = 1 - t;
-    const x = u * u * p1.x + 2 * u * t * midX + t * t * p2.x;
-    const y = u * u * p1.y + 2 * u * t * midY + t * t * p2.y;
-    return { x, y };
-  };
+  const baseEdgeStroke = isDark ? 'rgba(255, 255, 255, 0.11)' : 'rgba(15, 23, 42, 0.16)';
+  const ringGuideStroke = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(15, 23, 42, 0.08)';
+  const gridDotColor = isDark ? '#ffffff' : '#0f172a';
+  const activeArrowColor = isDark ? '#38bdf8' : '#0284c7';
 
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full min-h-[500px] flex items-center justify-center bg-[#09090b] overflow-hidden select-none"
+      className={`relative w-full h-full min-h-[500px] flex items-center justify-center overflow-hidden select-none transition-colors duration-200 ${
+        isDark ? 'bg-[#09090b]' : 'bg-slate-50'
+      }`}
     >
       {/* 1. Subtle Engineering Grid Background */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.035]">
+      <svg className={`absolute inset-0 w-full h-full pointer-events-none ${isDark ? 'opacity-[0.035]' : 'opacity-[0.08]'}`}>
         <defs>
           <pattern id="canvas-grid" width="32" height="32" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="2" r="0.8" fill="#ffffff" />
+            <circle cx="2" cy="2" r="0.8" fill={gridDotColor} />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#canvas-grid)" />
@@ -145,17 +143,6 @@ export default function NetworkCanvas({
         <defs>
           {/* Subtle directional markers */}
           <marker
-            id="edge-arrow"
-            viewBox="0 0 10 10"
-            refX="28"
-            refY="5"
-            markerWidth="4.5"
-            markerHeight="4.5"
-            orient="auto"
-          >
-            <path d="M 1 2 L 7 5 L 1 8 z" fill="#3f3f46" />
-          </marker>
-          <marker
             id="edge-arrow-active"
             viewBox="0 0 10 10"
             refX="28"
@@ -164,12 +151,11 @@ export default function NetworkCanvas({
             markerHeight="5.5"
             orient="auto"
           >
-            <path d="M 1 2 L 7 5 L 1 8 z" fill="#38bdf8" />
+            <path d="M 1 2 L 7 5 L 1 8 z" fill={activeArrowColor} />
           </marker>
 
-          {/* Crisp, subtle glow filter (no excessive AI blur) */}
           <filter id="subtle-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation={isDark ? '3' : '2'} result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -184,7 +170,7 @@ export default function NetworkCanvas({
             cy={centerY}
             r={ringRadius}
             fill="none"
-            stroke="rgba(255, 255, 255, 0.05)"
+            stroke={ringGuideStroke}
             strokeWidth="1"
             strokeDasharray="2 4"
             className="pointer-events-none"
@@ -205,118 +191,193 @@ export default function NetworkCanvas({
                 y1={p1.y}
                 x2={p2.x}
                 y2={p2.y}
-                stroke="rgba(255, 255, 255, 0.1)"
-                strokeWidth="1.2"
+                stroke={baseEdgeStroke}
+                strokeWidth="1.4"
               />
             );
           })}
         </g>
 
-        {/* 2. Active Directed Message Paths */}
+        {/* 2. Active Message Paths (Strictly ONE single link per node pair) */}
         <g className="active-paths">
-          {inFlight.map((msg) => {
-            const pathD = getCurvedEdgePath(msg.src, msg.dst);
-            const isHovered = hoveredMessageId === msg.id;
-            const isRelated =
-              selectedNode === null || msg.src === selectedNode || msg.dst === selectedNode;
+          {Object.entries(linkGroups).map(([key, group]) => {
+            const { u, v, msgs } = group;
+            const hasForward = msgs.some((m) => m.src === u && m.dst === v);
+            const hasReverse = msgs.some((m) => m.src === v && m.dst === u);
+            const isBidirectional = hasForward && hasReverse;
 
-            if (!pathD) return null;
+            // Use primary message for color/direction if unidirectional, or canonical u->v if bidirectional
+            const primaryMsg = msgs[0];
+            const pathSrc = isBidirectional ? u : primaryMsg.src;
+            const pathDst = isBidirectional ? v : primaryMsg.dst;
+            const p1 = nodePosMap[pathSrc];
+            const p2 = nodePosMap[pathDst];
+            if (!p1 || !p2) return null;
+
+            const pathD = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+            const isHovered = msgs.some((m) => hoveredMessageId === m.id);
+            const isRelated =
+              selectedNode === null ||
+              msgs.some((m) => m.src === selectedNode || m.dst === selectedNode);
+
+            const linkColor = isBidirectional
+              ? activeArrowColor
+              : primaryMsg.color || activeArrowColor;
 
             return (
               <g
-                key={`path-${msg.id}`}
+                key={`active-link-${key}`}
                 className={`transition-opacity duration-150 ${
                   isRelated ? 'opacity-100' : 'opacity-15'
                 }`}
               >
-                {/* Subtle path glow */}
+                {/* Single active link glow */}
                 <path
                   d={pathD}
                   fill="none"
-                  stroke={msg.color || '#38bdf8'}
-                  strokeWidth={isHovered ? 3.5 : 2}
-                  strokeOpacity={isHovered ? 0.35 : 0.18}
+                  stroke={linkColor}
+                  strokeWidth={isHovered ? 4.5 : 3}
+                  strokeOpacity={isHovered ? 0.35 : 0.2}
                 />
 
-                {/* Flowing animated dash */}
+                {/* Single active link line */}
                 <path
                   d={pathD}
                   fill="none"
-                  stroke={msg.color || '#38bdf8'}
-                  strokeWidth={isHovered ? 2.2 : 1.6}
-                  strokeDasharray="6 5"
-                  className={isMotionPaused ? '' : 'edge-flow'}
-                  markerEnd="url(#edge-arrow-active)"
+                  stroke={linkColor}
+                  strokeWidth={isHovered ? 2.4 : 1.8}
+                  strokeDasharray={isBidirectional ? undefined : '6 5'}
+                  className={isBidirectional || isMotionPaused ? '' : 'edge-flow'}
+                  markerEnd={isBidirectional ? undefined : 'url(#edge-arrow-active)'}
                 />
               </g>
             );
           })}
         </g>
 
-        {/* 3. Message Packets (Clean, high-precision engineering pills) */}
+        {/* 3. Message Packets (Both directions travel directly along the same single link) */}
         <g className="message-packets">
-          {inFlight.map((msg) => {
-            const t = 0.14 + animTime * (0.86 - 0.14);
-            const curPos = getPointOnCurve(msg.src, msg.dst, t);
-            const packetColor = msg.color || '#38bdf8';
-            const isHovered = hoveredMessageId === msg.id;
-            const isRelated =
-              selectedNode === null || msg.src === selectedNode || msg.dst === selectedNode;
+          {Object.entries(linkGroups).flatMap(([, group]) => {
+            const { msgs } = group;
+            const hasForward = msgs.some((m) => m.src < m.dst);
+            const hasReverse = msgs.some((m) => m.src > m.dst);
+            const hasBothDirections = hasForward && hasReverse;
 
-            const labelText = `n${msg.src} → n${msg.dst}: ${msg.label}`;
-            const pillWidth = Math.max(88, labelText.length * 6.5 + 20);
+            // Count messages per direction for stacking if multiple go same way
+            const dirCounts = { fwd: 0, rev: 0 };
 
-            return (
-              <g
-                key={`packet-${msg.id}`}
-                transform={`translate(${curPos.x}, ${curPos.y})`}
-                className={`pointer-events-none transition-opacity duration-150 ${
-                  isRelated ? 'opacity-100' : 'opacity-15'
-                }`}
-              >
-                {/* Small indicator dot on the wire */}
-                <circle
-                  r="4"
-                  fill={packetColor}
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
-                />
+            return msgs.map((msg) => {
+              const isFwd = msg.src < msg.dst;
+              const dirIdx = isFwd ? dirCounts.fwd++ : dirCounts.rev++;
 
-                {/* Crisp floating label pill */}
-                <g transform="translate(0, -18)">
-                  <rect
-                    x={-pillWidth / 2}
-                    y="-10"
-                    width={pillWidth}
-                    height="20"
-                    rx="10"
-                    fill="#18181b"
-                    stroke={isHovered ? packetColor : 'rgba(255, 255, 255, 0.16)'}
-                    strokeWidth="1"
-                    filter="url(#subtle-glow)"
-                  />
-                  {/* Status dot */}
-                  <circle
-                    cx={-pillWidth / 2 + 8}
-                    cy="0"
-                    r="2.5"
-                    fill={packetColor}
-                  />
-                  {/* Text */}
-                  <text
-                    textAnchor="middle"
-                    x="4"
-                    y="3"
-                    fill="#f4f4f6"
-                    fontSize="9.5"
-                    fontWeight="600"
-                    fontFamily="ui-monospace, monospace"
-                  >
-                    {labelText}
-                  </text>
+              // Stagger progress slightly only when multiple packets share the exact same direction
+              const baseT = 0.14 + animTime * (0.86 - 0.14);
+              const tOffset = dirIdx * 0.06;
+              const t = Math.min(0.9, Math.max(0.1, baseT - tOffset));
+
+              const curPos = getPointOnLink(msg.src, msg.dst, t);
+              const packetColor = msg.color || activeArrowColor;
+              const isHovered = hoveredMessageId === msg.id;
+              const isRelated =
+                selectedNode === null || msg.src === selectedNode || msg.dst === selectedNode;
+
+              const labelText = `n${msg.src} → n${msg.dst}: ${msg.label}`;
+              const pillWidth = Math.max(88, labelText.length * 6.5 + 20);
+
+              // Keep dots strictly on the single link, while offsetting label pills when crossing
+              const mostlyHorizontal = Math.abs(curPos.dx) >= Math.abs(curPos.dy);
+              let pillX = 0;
+              let pillY = -18 - dirIdx * 22;
+
+              if (hasBothDirections) {
+                const sign = isFwd ? -1 : 1;
+                if (mostlyHorizontal) {
+                  pillX = 0;
+                  pillY = sign * (20 + dirIdx * 22);
+                } else {
+                  pillX = sign * (pillWidth * 0.5 + 14);
+                  pillY = sign * (6 + dirIdx * 22);
+                }
+              }
+
+              return (
+                <g
+                  key={`packet-${msg.id}`}
+                  transform={`translate(${curPos.x}, ${curPos.y})`}
+                  className={`pointer-events-none transition-opacity duration-150 ${
+                    isRelated ? 'opacity-100' : 'opacity-15'
+                  }`}
+                >
+                  {/* Subtle connector line from wire dot to floating pill when offset */}
+                  {(hasBothDirections || dirIdx > 0) && (
+                    <line
+                      x1="0"
+                      y1="0"
+                      x2={pillX}
+                      y2={pillY}
+                      stroke={packetColor}
+                      strokeWidth="1"
+                      strokeOpacity="0.45"
+                      strokeDasharray="2 2"
+                    />
+                  )}
+
+                  {/* Directional packet marker + dot directly on the single link */}
+                  <g transform={`rotate(${curPos.angle})`}>
+                    <circle
+                      r="4.5"
+                      fill={packetColor}
+                      stroke={isDark ? '#ffffff' : '#0f172a'}
+                      strokeWidth="1.4"
+                    />
+                    <path
+                      d="M 5.5 -3 L 10.5 0 L 5.5 3 Z"
+                      fill={packetColor}
+                    />
+                  </g>
+
+                  {/* Crisp floating label pill */}
+                  <g transform={`translate(${pillX}, ${pillY})`}>
+                    <rect
+                      x={-pillWidth / 2}
+                      y="-10"
+                      width={pillWidth}
+                      height="20"
+                      rx="10"
+                      fill={isDark ? '#18181b' : '#ffffff'}
+                      stroke={
+                        isHovered
+                          ? packetColor
+                          : isDark
+                          ? 'rgba(255, 255, 255, 0.16)'
+                          : 'rgba(15, 23, 42, 0.16)'
+                      }
+                      strokeWidth="1"
+                      filter="url(#subtle-glow)"
+                    />
+                    {/* Status dot */}
+                    <circle
+                      cx={-pillWidth / 2 + 8}
+                      cy="0"
+                      r="2.5"
+                      fill={packetColor}
+                    />
+                    {/* Text */}
+                    <text
+                      textAnchor="middle"
+                      x="4"
+                      y="3"
+                      fill={isDark ? '#f4f4f6' : '#0f172a'}
+                      fontSize="9.5"
+                      fontWeight="600"
+                      fontFamily="ui-monospace, monospace"
+                    >
+                      {labelText}
+                    </text>
+                  </g>
                 </g>
-              </g>
-            );
+              );
+            });
           })}
         </g>
 
@@ -336,26 +397,34 @@ export default function NetworkCanvas({
             const isSender = activeSenders.has(node.node_id);
             const isReceiver = activeReceivers.has(node.node_id);
 
-            // Intentional palette
-            let bgFill = '#18181b';
-            let strokeColor = 'rgba(255, 255, 255, 0.2)';
-            let statusDot = '#71717a';
+            // Intentional palette for Dark & Light themes
+            let bgFill = isDark ? '#18181b' : '#ffffff';
+            let strokeColor = isDark ? 'rgba(255, 255, 255, 0.22)' : '#cbd5e1';
+            let idTextColor = isDark ? '#ffffff' : '#0f172a';
+            let subTextColor = isDark ? '#71717a' : '#64748b';
+            let statusDot = isDark ? '#71717a' : '#64748b';
             let statusText = 'active';
 
             if (isLeader) {
-              bgFill = '#09251d';
+              bgFill = isDark ? '#09251d' : '#ecfdf5';
               strokeColor = '#10b981';
+              idTextColor = isDark ? '#ffffff' : '#065f46';
+              subTextColor = isDark ? '#6ee7b7' : '#047857';
               statusDot = '#10b981';
               statusText = 'elected';
             } else if (isCandidate) {
-              bgFill = '#241a0b';
+              bgFill = isDark ? '#241a0b' : '#fffbeb';
               strokeColor = '#f59e0b';
+              idTextColor = isDark ? '#ffffff' : '#92400e';
+              subTextColor = isDark ? '#fcd34d' : '#b45309';
               statusDot = '#f59e0b';
               statusText = 'candidate';
             } else if (isNonElected) {
-              bgFill = '#111114';
-              strokeColor = 'rgba(255, 255, 255, 0.08)';
-              statusDot = '#3f3f46';
+              bgFill = isDark ? '#111114' : '#f1f5f9';
+              strokeColor = isDark ? 'rgba(255, 255, 255, 0.08)' : '#cbd5e1';
+              idTextColor = isDark ? '#a1a1aa' : '#64748b';
+              subTextColor = isDark ? '#52525b' : '#94a3b8';
+              statusDot = isDark ? '#3f3f46' : '#94a3b8';
               statusText = 'passive';
             }
 
@@ -387,7 +456,7 @@ export default function NetworkCanvas({
                   <circle
                     r={nodeRadius + 6}
                     fill="none"
-                    stroke="#38bdf8"
+                    stroke={activeArrowColor}
                     strokeWidth="1.5"
                     strokeDasharray="3 3"
                   />
@@ -398,7 +467,7 @@ export default function NetworkCanvas({
                   <circle
                     r={nodeRadius + 4}
                     fill="none"
-                    stroke="#38bdf8"
+                    stroke={activeArrowColor}
                     strokeWidth="1.2"
                     strokeOpacity="0.8"
                   />
@@ -419,8 +488,8 @@ export default function NetworkCanvas({
                 <circle
                   r={nodeRadius}
                   fill={bgFill}
-                  stroke={isLeader ? '#10b981' : isSelected ? '#38bdf8' : strokeColor}
-                  strokeWidth={isLeader ? 2 : 1.5}
+                  stroke={isLeader ? '#10b981' : isSelected ? activeArrowColor : strokeColor}
+                  strokeWidth={isLeader ? 2.2 : 1.6}
                   className="transition-colors duration-150"
                 />
 
@@ -440,7 +509,7 @@ export default function NetworkCanvas({
                 <text
                   textAnchor="middle"
                   dy="-1"
-                  fill="#ffffff"
+                  fill={idTextColor}
                   fontSize="13.5"
                   fontWeight="700"
                   fontFamily="-apple-system, sans-serif"
@@ -453,7 +522,7 @@ export default function NetworkCanvas({
                 <text
                   textAnchor="middle"
                   dy="11"
-                  fill="#71717a"
+                  fill={subTextColor}
                   fontSize="8"
                   fontWeight="500"
                   fontFamily="ui-monospace, monospace"
@@ -470,8 +539,8 @@ export default function NetworkCanvas({
                     width="48"
                     height="12"
                     rx="6"
-                    fill="#18181b"
-                    stroke="rgba(255, 255, 255, 0.08)"
+                    fill={isDark ? '#18181b' : '#ffffff'}
+                    stroke={isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(15, 23, 42, 0.14)'}
                     strokeWidth="0.8"
                   />
                   <circle cx="-16" cy="0" r="2" fill={statusDot} />
@@ -479,7 +548,7 @@ export default function NetworkCanvas({
                     textAnchor="middle"
                     x="3"
                     y="2.5"
-                    fill="#a1a1aa"
+                    fill={isDark ? '#a1a1aa' : '#475569'}
                     fontSize="7"
                     fontWeight="600"
                     letterSpacing="0.4"
@@ -498,29 +567,39 @@ export default function NetworkCanvas({
       <div className="absolute top-3.5 left-4 z-20 flex items-center gap-2 text-xs">
         <button
           onClick={() => setShowLegend(!showLegend)}
-          className="surface-button px-3 py-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5 text-xs font-medium"
+          className={`surface-button px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs font-medium ${
+            isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+          }`}
         >
-          <Info size={13} className="text-zinc-400" />
+          <Info size={13} className={isDark ? 'text-zinc-400' : 'text-slate-500'} />
           <span>Legend</span>
         </button>
 
         {showLegend && (
-          <div className="surface-card px-3 py-1.5 rounded-lg flex items-center gap-3.5 text-[11px] text-zinc-300">
+          <div
+            className={`surface-card px-3 py-1.5 rounded-lg flex items-center gap-3.5 text-[11px] ${
+              isDark ? 'text-zinc-300' : 'text-slate-700'
+            }`}
+          >
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-zinc-400"></span> Active
+              <span className={`w-2 h-2 rounded-full ${isDark ? 'bg-zinc-400' : 'bg-slate-600'}`}></span> Active
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-amber-400"></span> Candidate
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-zinc-600"></span> Passive
+              <span className={`w-2 h-2 rounded-full ${isDark ? 'bg-zinc-600' : 'bg-slate-300'}`}></span> Passive
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Leader
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Leader
             </span>
-            <span className="h-3 w-px bg-zinc-800"></span>
-            <span className="flex items-center gap-1.5 text-sky-400 font-mono-code text-[10.5px]">
-              <span className="w-2 h-2 rounded-sm bg-sky-400"></span> In-Transit
+            <span className={`h-3 w-px ${isDark ? 'bg-zinc-800' : 'bg-slate-200'}`}></span>
+            <span
+              className={`flex items-center gap-1.5 font-mono-code text-[10.5px] ${
+                isDark ? 'text-sky-400' : 'text-sky-600'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-sm ${isDark ? 'bg-sky-400' : 'bg-sky-600'}`}></span> In-Transit
             </span>
           </div>
         )}
@@ -529,21 +608,25 @@ export default function NetworkCanvas({
       {/* 4. Top-Right Election Status Milestone */}
       {isFinished ? (
         <div className="absolute top-3.5 right-4 z-20 surface-card border-emerald-500/30 rounded-xl px-4 py-2 flex items-center gap-2.5">
-          <div className="w-6 h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+          <div className="w-6 h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-500">
             <Crown size={14} />
           </div>
           <div>
-            <div className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">
+            <div className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wider">
               Election Concluded
             </div>
-            <div className="text-xs font-bold text-zinc-200 font-mono-code">
+            <div className={`text-xs font-bold font-mono-code ${isDark ? 'text-zinc-200' : 'text-slate-900'}`}>
               Leader: Node {leaders.join(', ')}
             </div>
           </div>
         </div>
       ) : (
-        <div className="absolute top-3.5 right-4 z-20 surface-button px-3 py-1.5 rounded-lg text-xs font-mono-code text-zinc-400 flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
+        <div
+          className={`absolute top-3.5 right-4 z-20 surface-button px-3 py-1.5 rounded-lg text-xs font-mono-code flex items-center gap-2 ${
+            isDark ? 'text-zinc-400' : 'text-slate-600'
+          }`}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
           <span>Round {currentRoundData.round}</span>
         </div>
       )}
@@ -552,22 +635,32 @@ export default function NetworkCanvas({
       <div className="absolute bottom-3.5 left-4 z-20 flex flex-col gap-1.5 max-w-sm w-full">
         <button
           onClick={() => setShowTransitDrawer(!showTransitDrawer)}
-          className="surface-button px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-white flex items-center justify-between w-auto self-start"
+          className={`surface-button px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-between w-auto self-start ${
+            isDark ? 'text-zinc-300 hover:text-white' : 'text-slate-700 hover:text-slate-950'
+          }`}
         >
           <div className="flex items-center gap-2">
-            <Send size={12} className="text-sky-400" />
+            <Send size={12} className="text-sky-500" />
             <span>Messages in Transit</span>
-            <span className="px-1.5 py-0.2 rounded text-[10px] font-mono-code bg-zinc-800 text-zinc-300">
+            <span
+              className={`px-1.5 py-0.2 rounded text-[10px] font-mono-code ${
+                isDark ? 'bg-zinc-800 text-zinc-300' : 'bg-slate-200 text-slate-700'
+              }`}
+            >
               {inFlight.length}
             </span>
           </div>
-          {showTransitDrawer ? <ChevronDown size={13} className="ml-2 text-zinc-500" /> : <ChevronUp size={13} className="ml-2 text-zinc-500" />}
+          {showTransitDrawer ? (
+            <ChevronDown size={13} className={`ml-2 ${isDark ? 'text-zinc-500' : 'text-slate-400'}`} />
+          ) : (
+            <ChevronUp size={13} className={`ml-2 ${isDark ? 'text-zinc-500' : 'text-slate-400'}`} />
+          )}
         </button>
 
         {showTransitDrawer && (
           <div className="surface-card rounded-xl p-2.5 max-h-40 overflow-y-auto flex flex-col gap-1">
             {inFlight.length === 0 ? (
-              <div className="text-center py-3 text-zinc-500 text-xs font-mono-code">
+              <div className={`text-center py-3 text-xs font-mono-code ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>
                 No active packets this round.
               </div>
             ) : (
@@ -580,15 +673,19 @@ export default function NetworkCanvas({
                     onMouseLeave={() => setHoveredMessageId(null)}
                     className={`px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between cursor-pointer transition-colors ${
                       isHovered
-                        ? 'bg-zinc-800/90 text-white'
-                        : 'bg-zinc-900/40 text-zinc-300 hover:bg-zinc-800/50'
+                        ? isDark
+                          ? 'bg-zinc-800/90 text-white'
+                          : 'bg-slate-200 text-slate-900'
+                        : isDark
+                        ? 'bg-zinc-900/40 text-zinc-300 hover:bg-zinc-800/50'
+                        : 'bg-slate-100/80 text-slate-700 hover:bg-slate-200/70'
                     }`}
                   >
                     <div className="flex items-center gap-2 font-mono-code text-[11px]">
-                      <span className="text-sky-400 font-semibold">Node {m.src}</span>
-                      <span className="text-zinc-600">→</span>
-                      <span className="text-emerald-400 font-semibold">Node {m.dst}</span>
-                      <span className="text-zinc-500">[{m.label}]</span>
+                      <span className={`font-semibold ${isDark ? 'text-sky-400' : 'text-sky-600'}`}>Node {m.src}</span>
+                      <span className={isDark ? 'text-zinc-600' : 'text-slate-400'}>→</span>
+                      <span className={`font-semibold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>Node {m.dst}</span>
+                      <span className={isDark ? 'text-zinc-500' : 'text-slate-500'}>[{m.label}]</span>
                     </div>
                   </div>
                 );
@@ -606,17 +703,25 @@ export default function NetworkCanvas({
             left: `${nodePosMap[hoveredNode]?.x + 18}px`,
             top: `${nodePosMap[hoveredNode]?.y - 32}px`,
           }}
-          className="surface-card px-3 py-2 rounded-lg text-xs flex flex-col gap-1 z-30 pointer-events-none border border-white/10 shadow-xl min-w-[130px]"
+          className={`surface-card px-3 py-2 rounded-lg text-xs flex flex-col gap-1 z-30 pointer-events-none shadow-xl min-w-[130px] ${
+            isDark ? 'border-white/10' : 'border-slate-200'
+          }`}
         >
-          <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1">
-            <span className="font-semibold text-zinc-100">Node {hoveredNode}</span>
-            <span className="font-mono-code text-[10.5px] text-zinc-400">
+          <div
+            className={`flex items-center justify-between gap-2 border-b pb-1 ${
+              isDark ? 'border-white/10' : 'border-slate-200'
+            }`}
+          >
+            <span className={`font-semibold ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+              Node {hoveredNode}
+            </span>
+            <span className={`font-mono-code text-[10.5px] ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
               ID: {nodeStates[hoveredNode]?.id}
             </span>
           </div>
-          <div className="text-[11px] text-zinc-400 flex items-center justify-between">
+          <div className={`text-[11px] flex items-center justify-between ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
             <span>Status:</span>
-            <span className="font-medium text-zinc-200 capitalize">
+            <span className={`font-medium capitalize ${isDark ? 'text-zinc-200' : 'text-slate-800'}`}>
               {nodeStates[hoveredNode]?.status}
             </span>
           </div>
