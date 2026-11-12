@@ -177,8 +177,15 @@ export default function App() {
     };
   }, [isPlaying, speed, simData]);
 
+  // When switching into Autoplay (Run button), unfreeze packets so they finish 0 -> 100%
+  useEffect(() => {
+    if (isPlaying && loopProgressRef.current < 1.0) {
+      setIsMotionPaused(false);
+    }
+  }, [isPlaying]);
+
   // Reset packet animation on every round or simulation change:
-  // Plays smoothly from 0% to 80% (0.80) and automatically freezes at 80%.
+  // Autoplay (Run): plays 0% -> 100%. Step-by-step: plays 0% -> 60% and freezes.
   useEffect(() => {
     loopProgressRef.current = 0;
     setPacketProgress(0);
@@ -186,11 +193,14 @@ export default function App() {
     setAnimRunId((id) => id + 1);
   }, [currentRound, simData]);
 
-  // Packet animation: smoothly advance 0 -> 0.80 (80%) and freeze there
+  // Packet animation: 0 -> 1.0 (100%) during Run autoplay, 0 -> 0.60 (60%) when stepping
   useEffect(() => {
     if (isMotionPaused) return;
     let animId;
-    const cycleMs = 1400 / speed;
+    const targetStop = isPlaying ? 1.0 : 0.6;
+    const cycleMs = isPlaying
+      ? Math.max(550, Math.max(700, 2000 / speed) * 0.88)
+      : 1400 / speed;
     const startLoopProgress = loopProgressRef.current;
     const startTime = performance.now();
 
@@ -198,9 +208,9 @@ export default function App() {
       const elapsed = now - startTime;
       const nextProgress = startLoopProgress + elapsed / cycleMs;
 
-      if (nextProgress >= 0.8) {
-        loopProgressRef.current = 0.8;
-        setPacketProgress(0.8);
+      if (nextProgress >= targetStop) {
+        loopProgressRef.current = targetStop;
+        setPacketProgress(targetStop);
         setIsMotionPaused(true);
         return;
       }
@@ -212,11 +222,12 @@ export default function App() {
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [isMotionPaused, animRunId, speed]);
+  }, [isMotionPaused, animRunId, speed, isPlaying]);
 
   const toggleFreezeMotion = () => {
+    const targetStop = isPlaying ? 1.0 : 0.6;
     if (isMotionPaused) {
-      if (loopProgressRef.current >= 0.8) {
+      if (loopProgressRef.current >= targetStop) {
         loopProgressRef.current = 0;
         setPacketProgress(0);
         setAnimRunId((id) => id + 1);
@@ -310,7 +321,7 @@ export default function App() {
                     : 'bg-slate-100 text-slate-600 border-slate-200'
                 }`}
               >
-                Pandurangan Ch. 5
+                Synchronous Model
               </span>
             </div>
           </div>
@@ -575,7 +586,7 @@ export default function App() {
                   }`}
                 >
                   <BookOpen size={14} />
-                  <span>Chapter 5 Formal Invariants</span>
+                  <span>Protocol Formal Invariants</span>
                 </div>
                 <h2 className={`text-xl font-bold ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
                   {currentAlgObj.title || currentAlgObj.name}

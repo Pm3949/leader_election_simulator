@@ -89,7 +89,6 @@ export default function Controls({
           }`}
         >
           <span>Target Algorithm</span>
-          <span className={`text-[10px] font-mono ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>Ch. 5</span>
         </label>
         <div className="relative">
           <select

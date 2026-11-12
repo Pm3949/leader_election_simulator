@@ -511,7 +511,7 @@ export default function ComplexityDashboard({
         </div>
       </div>
 
-      {/* 3. Bottom Table: Full Complexity Matrix (Pandurangan Ch. 5) */}
+      {/* 3. Bottom Table: Full Complexity Matrix */}
       <div className={sectionCardClass}>
         <div className="flex items-center justify-between">
           <div>
@@ -519,7 +519,7 @@ export default function ComplexityDashboard({
               Distributed Leader Election Complexity Matrix
             </h3>
             <p className={`text-[11px] mt-0.5 ${isDark ? 'text-zinc-500' : 'text-slate-500'}`}>
-              Theoretical bounds from Gopal Pandurangan's <i>Distributed Network Algorithms</i> (Chapter 5)
+              Theoretical time and message complexity bounds across synchronous network models
             </p>
           </div>
           <span

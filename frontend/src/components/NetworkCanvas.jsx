@@ -4,8 +4,14 @@ import {
   Send,
   ChevronDown,
   ChevronUp,
-  Info
+  Info,
+  ZoomIn,
+  ZoomOut,
+  Maximize2
 } from 'lucide-react';
+
+const MIN_ZOOM = 0.4;
+const MAX_ZOOM = 3.0;
 
 export default function NetworkCanvas({
   graph,
@@ -18,11 +24,26 @@ export default function NetworkCanvas({
   isDark = true
 }) {
   const containerRef = useRef(null);
+  const svgRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 900, height: 600 });
   const [hoveredNode, setHoveredNode] = useState(null);
   const [hoveredMessageId, setHoveredMessageId] = useState(null);
   const [showTransitDrawer, setShowTransitDrawer] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
+
+  // Interactive pan, zoom, and node-dragging states
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [draggingNodeId, setDraggingNodeId] = useState(null);
+  const [customPositions, setCustomPositions] = useState({});
+  const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0, nodeX: 0, nodeY: 0 });
+  const didDragRef = useRef(false);
+
+  // Reset custom dragged node positions when topology/graph resets
+  useEffect(() => {
+    setCustomPositions({});
+  }, [graph]);
 
   useEffect(() => {
     function updateSize() {
@@ -38,6 +59,33 @@ export default function NetworkCanvas({
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
   }, []);
+
+  // Cursor-centered mouse wheel zoom (non-passive so preventDefault blocks page scroll)
+  useEffect(() => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+
+    const handleWheel = (e) => {
+      e.preventDefault();
+      const rect = svgEl.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.12 : 0.89;
+
+      setZoom((prevZoom) => {
+        const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((prevZoom * factor).toFixed(3))));
+        const ratio = nextZoom / prevZoom;
+        setPan((prevPan) => ({
+          x: mouseX - (mouseX - prevPan.x) * ratio,
+          y: mouseY - (mouseY - prevPan.y) * ratio,
+        }));
+        return nextZoom;
+      });
+    };
+
+    svgEl.addEventListener('wheel', handleWheel, { passive: false });
+    return () => svgEl.removeEventListener('wheel', handleWheel);
+  }, [graph, currentRoundData]);
 
   if (!graph || !graph.nodes || !currentRoundData) {
     return (
@@ -59,8 +107,31 @@ export default function NetworkCanvas({
   const drawWidth = width - padding * 2;
   const drawHeight = height - padding * 2;
 
-  // Convert 0..1 normalized coordinates to canvas pixels
+  const zoomBy = (factor) => {
+    const cx = width / 2;
+    const cy = height / 2;
+    setZoom((prevZoom) => {
+      const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((prevZoom * factor).toFixed(3))));
+      const ratio = nextZoom / prevZoom;
+      setPan((prevPan) => ({
+        x: cx - (cx - prevPan.x) * ratio,
+        y: cy - (cy - prevPan.y) * ratio,
+      }));
+      return nextZoom;
+    });
+  };
+
+  const resetView = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setCustomPositions({});
+  };
+
+  // Convert 0..1 normalized coordinates to canvas pixels (with optional user drag overrides)
   const getNodePos = (node) => {
+    if (customPositions[node.node_id]) {
+      return customPositions[node.node_id];
+    }
     return {
       x: padding + (node.x ?? 0.5) * drawWidth,
       y: padding + (node.y ?? 0.5) * drawHeight,
@@ -71,6 +142,85 @@ export default function NetworkCanvas({
   graph.nodes.forEach((n) => {
     nodePosMap[n.node_id] = getNodePos(n);
   });
+
+  const handleSvgPointerDown = (e) => {
+    if (e.button !== 0 && e.button !== 1) return;
+    if (e.target.closest('.graph-node')) return;
+    didDragRef.current = false;
+    setIsPanning(true);
+    panStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      panX: pan.x,
+      panY: pan.y,
+      nodeX: 0,
+      nodeY: 0,
+    };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const handleNodePointerDown = (e, nodeId) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    didDragRef.current = false;
+    setDraggingNodeId(nodeId);
+    const pos = nodePosMap[nodeId];
+    panStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      panX: pan.x,
+      panY: pan.y,
+      nodeX: pos.x,
+      nodeY: pos.y,
+    };
+    svgRef.current?.setPointerCapture?.(e.pointerId);
+  };
+
+  const handleSvgPointerMove = (e) => {
+    if (draggingNodeId !== null) {
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      if (Math.hypot(dx, dy) > 4) {
+        didDragRef.current = true;
+      }
+      if (didDragRef.current) {
+        setCustomPositions((prev) => ({
+          ...prev,
+          [draggingNodeId]: {
+            x: panStartRef.current.nodeX + dx / zoom,
+            y: panStartRef.current.nodeY + dy / zoom,
+          },
+        }));
+      }
+      return;
+    }
+
+    if (!isPanning) return;
+    const dx = e.clientX - panStartRef.current.x;
+    const dy = e.clientY - panStartRef.current.y;
+    if (Math.hypot(dx, dy) > 3) {
+      didDragRef.current = true;
+    }
+    setPan({
+      x: panStartRef.current.panX + dx,
+      y: panStartRef.current.panY + dy,
+    });
+  };
+
+  const handleSvgPointerUp = (e) => {
+    if (draggingNodeId !== null) {
+      if (!didDragRef.current) {
+        onSelectNode(draggingNodeId);
+      }
+      setDraggingNodeId(null);
+    }
+    setIsPanning(false);
+    try {
+      svgRef.current?.releasePointerCapture?.(e.pointerId);
+    } catch {
+      // ignore if not captured
+    }
+  };
 
   const nodeStates = currentRoundData.nodes || {};
   const inFlight = currentRoundData.in_flight || [];
@@ -128,10 +278,16 @@ export default function NetworkCanvas({
         isDark ? 'bg-[#09090b]' : 'bg-slate-50'
       }`}
     >
-      {/* 1. Subtle Engineering Grid Background */}
+      {/* 1. Subtle Engineering Grid Background (synchronized with pan & zoom) */}
       <svg className={`absolute inset-0 w-full h-full pointer-events-none ${isDark ? 'opacity-[0.035]' : 'opacity-[0.08]'}`}>
         <defs>
-          <pattern id="canvas-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+          <pattern
+            id="canvas-grid"
+            width="32"
+            height="32"
+            patternUnits="userSpaceOnUse"
+            patternTransform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}
+          >
             <circle cx="2" cy="2" r="0.8" fill={gridDotColor} />
           </pattern>
         </defs>
@@ -139,7 +295,17 @@ export default function NetworkCanvas({
       </svg>
 
       {/* 2. Main Vector Graph Canvas */}
-      <svg className="w-full h-full relative z-10">
+      <svg
+        ref={svgRef}
+        onPointerDown={handleSvgPointerDown}
+        onPointerMove={handleSvgPointerMove}
+        onPointerUp={handleSvgPointerUp}
+        onPointerCancel={handleSvgPointerUp}
+        onDoubleClick={resetView}
+        className={`w-full h-full relative z-10 touch-none ${
+          isPanning || draggingNodeId !== null ? 'cursor-grabbing' : 'cursor-grab'
+        }`}
+      >
         <defs>
           {/* Subtle directional markers */}
           <marker
@@ -163,6 +329,7 @@ export default function NetworkCanvas({
           </filter>
         </defs>
 
+        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
         {/* Ring Guide Track */}
         {isRing && (
           <circle
@@ -322,7 +489,7 @@ export default function NetworkCanvas({
                     />
                   )}
 
-                  {/* Directional packet marker + dot directly on the single link */}
+                  {/* Packet dot + bold directional arrow in front of every transit message */}
                   <g transform={`rotate(${curPos.angle})`}>
                     <circle
                       r="4.5"
@@ -330,9 +497,21 @@ export default function NetworkCanvas({
                       stroke={isDark ? '#ffffff' : '#0f172a'}
                       strokeWidth="1.4"
                     />
+                    <line
+                      x1="4.5"
+                      y1="0"
+                      x2="16"
+                      y2="0"
+                      stroke={packetColor}
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                    />
                     <path
-                      d="M 5.5 -3 L 10.5 0 L 5.5 3 Z"
+                      d="M 13 -5 L 24 0 L 13 5 L 15.8 0 Z"
                       fill={packetColor}
+                      stroke={isDark ? '#09090b' : '#ffffff'}
+                      strokeWidth="0.9"
+                      strokeLinejoin="round"
                     />
                   </g>
 
@@ -434,10 +613,11 @@ export default function NetworkCanvas({
               <g
                 key={`node-${node.node_id}`}
                 transform={`translate(${pos.x}, ${pos.y})`}
-                onClick={() => onSelectNode(node.node_id)}
+                onPointerDown={(e) => handleNodePointerDown(e, node.node_id)}
+                onDoubleClick={(e) => e.stopPropagation()}
                 onMouseEnter={() => setHoveredNode(node.node_id)}
                 onMouseLeave={() => setHoveredNode(null)}
-                className="cursor-pointer group"
+                className="graph-node cursor-pointer group"
               >
                 {/* Leader Subtle Halo */}
                 {isLeader && (
@@ -560,6 +740,7 @@ export default function NetworkCanvas({
               </g>
             );
           })}
+        </g>
         </g>
       </svg>
 
@@ -695,13 +876,64 @@ export default function NetworkCanvas({
         )}
       </div>
 
-      {/* 6. Precision Node Hover Card */}
-      {hoveredNode !== null && (
+      {/* 5.5 Bottom-Right Interactive Zoom & Pan Toolbar */}
+      <div
+        className={`absolute bottom-3.5 right-4 z-20 surface-card rounded-xl p-1 flex items-center gap-0.5 text-xs ${
+          isDark ? 'text-zinc-300' : 'text-slate-700'
+        }`}
+      >
+        <button
+          onClick={() => zoomBy(0.85)}
+          disabled={zoom <= MIN_ZOOM}
+          title="Zoom Out (Scroll Down)"
+          className={`p-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+            isDark ? 'hover:bg-zinc-800 hover:text-white' : 'hover:bg-slate-200 hover:text-slate-950'
+          }`}
+        >
+          <ZoomOut size={14} />
+        </button>
+
+        <button
+          onClick={resetView}
+          title="Reset Zoom & Pan (Double-click Canvas)"
+          className={`px-2 py-1 rounded-lg font-mono-code text-[11px] font-medium transition-colors min-w-[46px] text-center ${
+            isDark ? 'hover:bg-zinc-800 text-zinc-300' : 'hover:bg-slate-200 text-slate-700'
+          }`}
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+
+        <button
+          onClick={() => zoomBy(1.18)}
+          disabled={zoom >= MAX_ZOOM}
+          title="Zoom In (Scroll Up)"
+          className={`p-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+            isDark ? 'hover:bg-zinc-800 hover:text-white' : 'hover:bg-slate-200 hover:text-slate-950'
+          }`}
+        >
+          <ZoomIn size={14} />
+        </button>
+
+        <span className={`h-4 w-px mx-0.5 ${isDark ? 'bg-zinc-800' : 'bg-slate-200'}`}></span>
+
+        <button
+          onClick={resetView}
+          title="Fit & Reset View"
+          className={`p-1.5 rounded-lg transition-colors ${
+            isDark ? 'hover:bg-zinc-800 hover:text-white' : 'hover:bg-slate-200 hover:text-slate-950'
+          }`}
+        >
+          <Maximize2 size={13} />
+        </button>
+      </div>
+
+      {/* 6. Precision Node Hover Card (tracks zoom & pan) */}
+      {hoveredNode !== null && draggingNodeId === null && (
         <div
           style={{
             position: 'absolute',
-            left: `${nodePosMap[hoveredNode]?.x + 18}px`,
-            top: `${nodePosMap[hoveredNode]?.y - 32}px`,
+            left: `${(nodePosMap[hoveredNode]?.x ?? 0) * zoom + pan.x + 18}px`,
+            top: `${(nodePosMap[hoveredNode]?.y ?? 0) * zoom + pan.y - 32}px`,
           }}
           className={`surface-card px-3 py-2 rounded-lg text-xs flex flex-col gap-1 z-30 pointer-events-none shadow-xl min-w-[130px] ${
             isDark ? 'border-white/10' : 'border-slate-200'

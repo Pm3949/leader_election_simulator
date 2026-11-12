@@ -1,4 +1,4 @@
-// Standalone algorithm definitions and textbook invariants (Gopal Pandurangan Ch. 5)
+// Standalone algorithm definitions and formal protocol invariants
 export const DEFAULT_ALGORITHMS = [
   {
     name: "BasicLE-Ring",

@@ -1,6 +1,6 @@
 # Distributed Leader Election Simulator
 
-Interactive distributed systems visualizer and simulator for Chapter 5 of Gopal Pandurangan's *Distributed Network Algorithms*.
+Interactive distributed systems visualizer and simulator for leader election algorithms in synchronous networks.
 
 ---
 
