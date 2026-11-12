@@ -15,8 +15,6 @@ export default function Controls({
   onSelectAlg,
   nodeCount,
   onChangeNodeCount,
-  seed,
-  onChangeSeed,
   idMode,
   onChangeIdMode,
   topology,
@@ -284,29 +282,7 @@ export default function Controls({
         </div>
       )}
 
-      {/* 6. Random Seed */}
-      <div className="flex flex-col gap-1.5">
-        <label
-          className={`text-[10.5px] font-semibold uppercase tracking-wider flex items-center justify-between ${
-            isDark ? 'text-zinc-400' : 'text-slate-500'
-          }`}
-        >
-          <span>RNG Seed</span>
-          <span className={`text-[10px] font-mono ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>Deterministic</span>
-        </label>
-        <input
-          type="number"
-          value={seed}
-          onChange={(e) => onChangeSeed(parseInt(e.target.value) || 0)}
-          className={`w-full border rounded-lg px-3 py-1.5 text-xs font-mono font-medium outline-none ${
-            isDark
-              ? 'bg-zinc-900/90 border-zinc-800 hover:border-zinc-700 focus:border-zinc-500 text-zinc-100'
-              : 'bg-slate-50 border-slate-300 hover:border-slate-400 focus:border-sky-500 text-slate-900'
-          }`}
-        />
-      </div>
-
-      {/* 7. Collapsible Protocol Invariants */}
+      {/* 6. Collapsible Protocol Invariants */}
       <div
         className={`mt-1 border rounded-xl overflow-hidden ${
           isDark ? 'border-zinc-800 bg-zinc-900/40' : 'border-slate-200 bg-slate-50'

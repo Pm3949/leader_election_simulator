@@ -53,7 +53,6 @@ export default function App() {
   const [algorithms, setAlgorithms] = useState(DEFAULT_ALGORITHMS);
   const [selectedAlg, setSelectedAlg] = useState('BasicLE-Ring');
   const [nodeCount, setNodeCount] = useState(8);
-  const [seed, setSeed] = useState(7);
   const [idMode, setIdMode] = useState('Sequential');
   const [topology, setTopology] = useState('Cycle');
 
@@ -115,7 +114,7 @@ export default function App() {
       body: JSON.stringify({
         algorithm: selectedAlg,
         nodes: nodeCount,
-        seed: seed,
+        seed: 7,
         id_mode: idMode,
         topology: topology,
       }),
@@ -143,7 +142,7 @@ export default function App() {
 
   useEffect(() => {
     runSimulation();
-  }, [selectedAlg, nodeCount, seed, idMode, topology]);
+  }, [selectedAlg, nodeCount, idMode, topology]);
 
   // 3. Play / Pause Autoplay Engine
   useEffect(() => {
@@ -463,8 +462,6 @@ export default function App() {
               onSelectAlg={(alg) => setSelectedAlg(alg)}
               nodeCount={nodeCount}
               onChangeNodeCount={(n) => setNodeCount(n)}
-              seed={seed}
-              onChangeSeed={(s) => setSeed(s)}
               idMode={idMode}
               onChangeIdMode={(m) => setIdMode(m)}
               topology={topology}
